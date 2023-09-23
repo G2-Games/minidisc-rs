@@ -93,6 +93,8 @@ pub struct NetMD {
 }
 
 impl NetMD {
+    const READ_REPLY_RETRY_INTERVAL: u32 = 10;
+
     /// Creates a new `NetMD` struct
     pub fn new(
         device: DeviceHandle<GlobalContext>,
@@ -141,37 +143,24 @@ impl NetMD {
 
     /// Poll the device to get either the result
     /// of the previous command, or the status
-    fn poll(&self, tries: usize) -> Result<(u16, [u8; 4]), Box<dyn Error>> {
+    fn poll(&self) -> Result<(u16, [u8; 4]), Box<dyn Error>> {
         // Create an array to store the result of the poll
         let mut poll_result = [0u8; 4];
 
-        // Try until failure or `tries` reached
-        for i in 0..tries {
-            let _status = match self.device_connection.read_control(
-                STANDARD_RECV,
-                0x01,
-                0,
-                0,
-                &mut poll_result,
-                DEFAULT_TIMEOUT,
-            ) {
-                Ok(size) => size,
-                Err(error) => return Err(error.into()),
-            };
+        let _status = match self.device_connection.read_control(
+            STANDARD_RECV,
+            0x01,
+            0,
+            0,
+            &mut poll_result,
+            DEFAULT_TIMEOUT,
+        ) {
+            Ok(size) => size,
+            Err(error) => return Err(error.into()),
+        };
 
-            let length_bytes = [poll_result[2], poll_result[3]];
-
-            if poll_result[0] != 0 {
-                return Ok((u16::from_le_bytes(length_bytes), poll_result));
-            }
-
-            if i > 0 {
-                std::thread::sleep(std::time::Duration::from_secs(1));
-            }
-        }
-
-        // This should not contain anything
         let length_bytes = [poll_result[2], poll_result[3]];
+        println!("Poll result: {}", u16::from_le_bytes(length_bytes));
         Ok((u16::from_le_bytes(length_bytes), poll_result))
     }
 
@@ -190,7 +179,7 @@ impl NetMD {
         use_factory_command: bool,
     ) -> Result<(), Box<dyn Error>> {
         //First poll to ensure the device is ready
-        match self.poll(1) {
+        match self.poll() {
             Ok(buffer) => match buffer.1[2] {
                 0 => 0,
                 _ => return Err("Device not ready!".into()),
@@ -216,21 +205,33 @@ impl NetMD {
         }
     }
 
-    pub fn read_reply(&self) -> Result<Vec<u8>, Box<dyn Error>> {
-        self._read_reply(false)
+    pub fn read_reply(&self, override_length: Option<i32>) -> Result<Vec<u8>, Box<dyn Error>> {
+        self._read_reply(false, override_length)
     }
 
-    pub fn read_factory_reply(&self) -> Result<Vec<u8>, Box<dyn Error>> {
-        self._read_reply(true)
+    pub fn read_factory_reply(&self, override_length: Option<i32>) -> Result<Vec<u8>, Box<dyn Error>> {
+        self._read_reply(true, override_length)
     }
 
     /// Poll to see if a message is ready,
     /// and if so, recieve it
-    fn _read_reply(&self, use_factory_command: bool) -> Result<Vec<u8>, Box<dyn Error>> {
-        let poll_result = match self.poll(30) {
-            Ok(buffer) => buffer,
-            Err(error) => return Err(error),
-        };
+    fn _read_reply(&self, use_factory_command: bool, override_length: Option<i32>) -> Result<Vec<u8>, Box<dyn Error>> {
+        let mut length = self.poll()?.0;
+
+        let mut current_attempt = 0;
+        while length == 0 {
+            let sleep_time = Self::READ_REPLY_RETRY_INTERVAL as u64
+                            * (u64::pow(2, current_attempt as u32 / 10) - 1);
+
+            std::thread::sleep(std::time::Duration::from_millis(sleep_time));
+            length = self.poll()?.0;
+            current_attempt += 1;
+        }
+
+        match override_length {
+            Some(value) => length = value as u16,
+            None => ()
+        }
 
         let request = match use_factory_command {
             false => 0x81,
@@ -238,7 +239,7 @@ impl NetMD {
         };
 
         // Create a buffer to fill with the result
-        let mut buf: Vec<u8> = vec![0; poll_result.0 as usize];
+        let mut buf: Vec<u8> = vec![0; length as usize];
 
         match self.device_connection.read_control(
             STANDARD_RECV,

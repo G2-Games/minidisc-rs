@@ -1,6 +1,7 @@
 use crate::netmd::utils;
 use crate::NetMD;
 use std::error::Error;
+use std::fmt;
 
 #[derive(Copy, Clone)]
 enum Action {
@@ -188,6 +189,7 @@ impl NetMDInterface {
         u32::from_le_bytes(bytes)
     }
 
+    // TODO: Finish proper implementation
     fn disc_subunit_identifier(&self) -> Result<NetMDLevel, Box<dyn Error>> {
         self.change_descriptor_state(
             Descriptor::DiscSubunitIdentifier,
@@ -271,6 +273,18 @@ impl NetMDInterface {
         Err("No supported media types found".into())
     }
 
+    /* TODO: Finish implementation
+    fn factory(&self) -> Result<NetMDLevel, Box<dyn Error>> {
+        let device_name = self.net_md_device.device_name().expect("The device has no name");
+
+        let himd = device_name.contains("MZ-RH") || device_name.contains("MZ-NH");
+
+        self.disc_subunit_identifier()?;
+
+        let constructor =
+    }
+    */
+
     fn net_md_level(&self) -> Result<NetMDLevel, Box<dyn Error>> {
         let result = self.disc_subunit_identifier()?;
 
@@ -323,7 +337,7 @@ impl NetMDInterface {
         let mut data;
 
         while current_attempt < Self::MAX_INTERIM_READ_ATTEMPTS {
-            data = match self.net_md_device.read_reply() {
+            data = match self.net_md_device.read_reply(None) {
                 Ok(reply) => reply,
                 Err(error) => return Err(error.into()),
             };
@@ -396,6 +410,18 @@ impl NetMDInterface {
         Ok(())
     }
 
+    fn acquire(&self) -> Result<(), Box<dyn Error>> {
+        let mut query = vec![0xff, 0x01, 0x0c, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff];
+        let reply = self.send_query(&mut query, false, false)?;
+        utils::check_result(reply, &[0xff, 0x01, 0x0c, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff])
+    }
+
+    fn release(&self) -> Result<(), Box<dyn Error>> {
+        let mut query = vec![0xff, 0x01, 0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff];
+        let reply = self.send_query(&mut query, false, false)?;
+        utils::check_result(reply, &[0xff, 0x01, 0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff])
+    }
+
     fn status(&self) -> Result<Vec<u8>, Box<dyn Error>> {
         self.change_descriptor_state(Descriptor::OperatingStatusBlock, DescriptorAction::OpenRead);
         let mut query = vec![
@@ -411,7 +437,7 @@ impl NetMDInterface {
         Ok(res)
     }
 
-    pub fn is_disc_present(&self) -> Result<bool, Box<dyn Error>> {
+    pub fn disc_present(&self) -> Result<bool, Box<dyn Error>> {
         let status = self.status()?;
 
         println!("{:X?}", status);
@@ -476,5 +502,106 @@ impl NetMDInterface {
 
     pub fn playback_status2(&self) -> Result<Vec<u8>, Box<dyn Error>> {
         self.playback_status_query([0x88, 0x02], [0x88, 0x06])
+    }
+
+    pub fn get_position(&self) -> Result<[u16; 5], Box<dyn Error>> {
+        self.change_descriptor_state(Descriptor::OperatingStatusBlock, DescriptorAction::OpenRead);
+
+        let mut query = vec![
+            0x18, 0x09, 0x80, 0x01, 0x04, 0x30, 0x88, 0x02, 0x00, 0x30, 0x88, 0x05, 0x00, 0x30,
+            0x00, 0x03, 0x00, 0x30, 0x00, 0x02, 0x00, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00
+        ];
+
+        let reply = match self.send_query(&mut query, false, false) {
+            Ok(result) => result,
+            Err(e) if e.to_string() == "Rejected" => Vec::new(),
+            Err(e) => return Err(e)
+        };
+
+        let track_number = u16::from_be_bytes([reply[35], reply[36]]);
+
+        let hour = utils::byte_from_bcd(reply[37])?;
+        let minute = utils::byte_from_bcd(reply[38])?;
+        let second = utils::byte_from_bcd(reply[39])?;
+        let frame = utils::byte_from_bcd(reply[40])?;
+
+        let final_result = [track_number, hour as u16, minute as u16, second as u16, frame as u16];
+
+        self.change_descriptor_state(Descriptor::OperatingStatusBlock, DescriptorAction::Close);
+
+        Ok(final_result)
+    }
+
+    pub fn eject_disc(&self) -> Result<(), Box<dyn Error>> {
+        let mut query = vec![0x18, 0xc1, 0xff, 0x60, 0x00];
+        let _reply = self.send_query(&mut query, false, false)?;
+        Ok(())
+    }
+
+    pub fn can_eject_disc(&self) -> Result<bool, Box<dyn Error>> {
+        let mut query = vec![0x18, 0xc1, 0xff, 0x60, 0x00];
+        match self.send_query(&mut query, true, false) {
+            Ok(_) => Ok(true),
+            Err(error) => Err(error)
+        }
+    }
+
+    pub fn go_to_track(&self, track_number: u16) -> Result<u16, Box<dyn Error>> {
+        let mut query = vec![0x18, 0x50, 0xff, 0x01, 0x00, 0x00, 0x00, 0x00,
+                             0b00, 0b00];
+
+        let bytes = track_number.to_le_bytes();
+
+        query[8] = bytes[1];
+        query[9] = bytes[0];
+
+        let reply = self.send_query(&mut query, false, false)?;
+
+        Ok(u16::from_be_bytes([reply[8], reply[9]]))
+    }
+
+    pub fn go_to_time(&self, track_number: u16, hour: u8, minute: u8, second: u8, frame: u8) -> Result<u16, Box<dyn Error>> {
+        let mut query = vec![0x18, 0x50, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00,
+                             0b00, 0b00, 0b00, 0b00, 0b00, 0b00];
+
+        let bytes = track_number.to_le_bytes();
+        query[8] = bytes[1];
+        query[9] = bytes[0];
+
+        query[10] = utils::bcd_from_byte(hour)?;
+        query[11] = utils::bcd_from_byte(minute)?;
+        query[12] = utils::bcd_from_byte(second)?;
+        query[13] = utils::bcd_from_byte(frame)?;
+
+        let reply = self.send_query(&mut query, false, false)?;
+
+        Ok(u16::from_be_bytes([reply[8], reply[9]]))
+    }
+
+    fn _track_change(&self, direction: Track) -> Result<(), Box<dyn Error>> {
+        let mut query = vec![0x18, 0x50, 0xff, 0x10, 0x00, 0x00, 0x00, 0x00,
+                             0b00, 0b00];
+
+        let direction_number = direction as u16;
+        let direction_bytes = direction_number.to_le_bytes();
+
+        query[8] = direction_bytes[1];
+        query[9] = direction_bytes[0];
+
+        let _ = self.send_query(&mut query, false, false);
+
+        Ok(())
+    }
+
+    pub fn next_track(&self) -> Result<(), Box<dyn Error>> {
+        self._track_change(Track::Next)
+    }
+
+    pub fn previous_track(&self) -> Result<(), Box<dyn Error>> {
+        self._track_change(Track::Next)
+    }
+
+    pub fn restart_track(&self) -> Result<(), Box<dyn Error>> {
+        self._track_change(Track::Next)
     }
 }
