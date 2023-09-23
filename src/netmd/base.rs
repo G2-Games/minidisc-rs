@@ -10,6 +10,9 @@ const STANDARD_SEND: u8 =
 const STANDARD_RECV: u8 =
     rusb::request_type(Direction::In, RequestType::Vendor, Recipient::Interface);
 
+const BULK_WRITE_ENDPOINT: u8 = 0x02;
+const BULK_READ_ENDPOINT: u8 = 0x01;
+
 pub const CHUNKSIZE: u32 = 0x10000;
 
 // TODO: I think this sucks, figure out a better way
@@ -170,8 +173,16 @@ impl NetMD {
         Ok((u16::from_le_bytes(length_bytes), poll_result))
     }
 
+    pub fn send_command(&self, command: Vec<u8>) -> Result<(), Box<dyn Error>> {
+        self._send_command(command, false)
+    }
+
+    pub fn send_factory_command(&self, command: Vec<u8>) -> Result<(), Box<dyn Error>> {
+        self._send_command(command, false)
+    }
+
     /// Send a control message to the device
-    pub fn send_command(
+    fn _send_command(
         &self,
         command: Vec<u8>,
         use_factory_command: bool,
@@ -203,9 +214,17 @@ impl NetMD {
         }
     }
 
+    pub fn read_reply(&self) -> Result<Vec<u8>, Box<dyn Error>> {
+        self._read_reply(false)
+    }
+
+    pub fn read_factory_reply(&self) -> Result<Vec<u8>, Box<dyn Error>> {
+        self._read_reply(true)
+    }
+
     /// Poll to see if a message is ready,
     /// and if so, recieve it
-    pub fn read_reply(&self, use_factory_command: bool) -> Result<Vec<u8>, Box<dyn Error>> {
+    fn _read_reply(&self, use_factory_command: bool) -> Result<Vec<u8>, Box<dyn Error>> {
         let poll_result = match self.poll(30) {
             Ok(buffer) => buffer,
             Err(error) => return Err(error),
@@ -233,6 +252,7 @@ impl NetMD {
     }
 
     // Default chunksize should be 0x10000
+    // TODO: Make these Async eventually
     pub fn read_bulk(&self, length: u32, chunksize: u32) -> Result<Vec<u8>, Box<dyn Error>> {
         let result = self.read_bulk_to_array(length, chunksize)?;
 
@@ -248,7 +268,7 @@ impl NetMD {
             let mut buffer: Vec<u8> = vec![0; to_read as usize];
 
             done += self.device_connection.read_bulk(
-                1,
+                BULK_READ_ENDPOINT,
                 &mut buffer,
                 DEFAULT_TIMEOUT
             )? as u32;
@@ -256,5 +276,15 @@ impl NetMD {
         }
 
         Ok(final_result)
+    }
+
+    pub fn write_bulk(&self, data: &mut Vec<u8>) -> Result<usize, Box<dyn Error>> {
+        let written = self.device_connection.read_bulk(
+            BULK_WRITE_ENDPOINT,
+            data,
+            DEFAULT_TIMEOUT
+        )?;
+
+        Ok(written)
     }
 }

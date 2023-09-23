@@ -309,7 +309,7 @@ impl NetMDInterface {
         new_query.push(status_byte as u8);
         new_query.append(query);
 
-        self.net_md_device.send_command(new_query, false)?;
+        self.net_md_device.send_command(new_query)?;
 
         Ok(())
     }
@@ -319,7 +319,7 @@ impl NetMDInterface {
         let mut data;
 
         while current_attempt < Self::MAX_INTERIM_READ_ATTEMPTS {
-            data = match self.net_md_device.read_reply(false) {
+            data = match self.net_md_device.read_reply() {
                 Ok(reply) => reply,
                 Err(error) => return Err(error.into()),
             };
