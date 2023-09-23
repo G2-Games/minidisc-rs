@@ -73,6 +73,19 @@ enum NetMDLevel {
     Level3 = 0x70, // Editing MD
 }
 
+impl std::convert::TryFrom<u8> for NetMDLevel {
+    type Error = Box<dyn Error>;
+
+    fn try_from(item: u8) -> Result<Self, Box<dyn Error>> {
+        match item {
+            0x20 => Ok(NetMDLevel::Level1),
+            0x50 => Ok(NetMDLevel::Level2),
+            0x70 => Ok(NetMDLevel::Level3),
+            _ => Err("Value not valid NetMD Level".into())
+        }
+    }
+}
+
 enum Descriptor {
     DiscTitleTD,
     AudioUTOC1TD,
@@ -146,6 +159,14 @@ impl std::convert::TryFrom<u8> for Status {
     }
 }
 
+struct MediaInfo {
+    supported_media_type: u32,
+    implementation_profile_id: u8,
+    media_type_attributes: u8,
+    md_audio_version: u8,
+    supports_md_clip: u8
+}
+
 pub struct NetMDInterface {
     pub net_md_device: NetMD,
 }
@@ -158,7 +179,16 @@ impl NetMDInterface {
         NetMDInterface { net_md_device }
     }
 
-    pub fn get_disc_subunit_identifier(&self) -> Result<(), Box<dyn Error>> {
+    fn construct_multibyte(&self, buffer: &Vec<u8>, n: u8, offset: &mut usize) -> u32{
+        let mut bytes = [0u8; 4];
+        for i in 0..n as usize {
+            bytes[i] = buffer[*offset];
+            *offset += 1;
+        }
+        u32::from_le_bytes(bytes)
+    }
+
+    fn get_disc_subunit_identifier(&self) -> Result<NetMDLevel, Box<dyn Error>> {
         self.change_descriptor_state(
             Descriptor::DiscSubunitIdentifier,
             DescriptorAction::OpenRead,
@@ -166,16 +196,75 @@ impl NetMDInterface {
 
         let mut query = vec![0x18, 0x09, 0x00, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00];
 
-        let reply = self.send_query(&mut query, false, false);
+        let reply = self.send_query(&mut query, false, false)?;
 
-        println!("{:X?}", reply);
+        let descriptor_length = reply[11];
+        let generation_id = reply[12];
+        let size_of_list_id = reply[13];
+        let size_of_object_id = reply[14];
+        let size_of_object_position = reply[15];
+        let amt_of_root_object_lists = reply[17];
+        let buffer = reply[18..].to_vec();
+        let mut root_objects: Vec<u32> = Vec::new();
 
-        /*
-        let descriptor_length = i16::from_le_bytes(reply[0..1].try_into()?);
-        let generation_id = i16::from_le_bytes(reply[0..1].try_into()?);
+        println!("{}", buffer.len());
+
+        let mut buffer_offset: usize = 0;
+
+        for _ in 0..amt_of_root_object_lists {
+            root_objects.push(self.construct_multibyte(&buffer, size_of_list_id, &mut buffer_offset));
+        }
+        println!("{:?}", root_objects);
+
+        let subunit_dependent_length = self.construct_multibyte(&buffer, 2, &mut buffer_offset);
+        let subunit_fields_length = self.construct_multibyte(&buffer, 2, &mut buffer_offset);
+        let attributes = buffer[buffer_offset];
+        buffer_offset += 1;
+        let disc_subunit_version = buffer[buffer_offset];
+        buffer_offset += 1;
+
+        let mut supported_media_type_specifications: Vec<MediaInfo> = Vec::new();
+        let amt_supported_media_types = buffer[buffer_offset];
+        buffer_offset += 1;
+        for i in 0..amt_supported_media_types {
+            let supported_media_type = self.construct_multibyte(&buffer, 2, &mut buffer_offset);
+
+            let implementation_profile_id = buffer[buffer_offset];
+            buffer_offset += 1;
+            let media_type_attributes = buffer[buffer_offset];
+            buffer_offset += 1;
+
+            let type_dep_length = self.construct_multibyte(&buffer, 2, &mut buffer_offset);
+
+            let md_audio_version = buffer[buffer_offset];
+            buffer_offset += 1;
+            let supports_md_clip = buffer[buffer_offset];
+            buffer_offset += 1;
+
+            supported_media_type_specifications.push(MediaInfo {
+                supported_media_type,
+                implementation_profile_id,
+                media_type_attributes,
+                md_audio_version,
+                supports_md_clip
+            })
+        }
+
+        /* TODO: Fix this later
+        let manufacturer_dep_length = self.construct_multibyte(&buffer, 2, &mut buffer_offset);
+        let manufacturer_dep_data = &buffer[buffer_offset..buffer_offset + manufacturer_dep_length as usize];
         */
 
-        Ok(())
+        self.change_descriptor_state(Descriptor::DiscSubunitIdentifier, DescriptorAction::Close);
+
+        for media in supported_media_type_specifications {
+            if media.supported_media_type != 0x301 {
+                continue;
+            }
+
+            return NetMDLevel::try_from(media.implementation_profile_id)
+        }
+        Err("No supported media types found".into())
     }
 
     fn playback_control(&self, action: Action) -> Result<(), Box<dyn Error>> {
@@ -190,20 +279,20 @@ impl NetMDInterface {
         Ok(())
     }
 
-    pub fn play(&self) {
-        let _ = self.playback_control(Action::Play);
+    pub fn play(&self) -> Result<(), Box<dyn Error>> {
+        self.playback_control(Action::Play)
     }
 
-    pub fn fast_forward(&self) {
-        let _ = self.playback_control(Action::FastForward);
+    pub fn fast_forward(&self) -> Result<(), Box<dyn Error>> {
+        self.playback_control(Action::FastForward)
     }
 
-    pub fn rewind(&self) {
-        let _ = self.playback_control(Action::Rewind);
+    pub fn rewind(&self) -> Result<(), Box<dyn Error>> {
+        self.playback_control(Action::Rewind)
     }
 
-    pub fn pause(&self) {
-        let _ = self.playback_control(Action::Pause);
+    pub fn pause(&self) -> Result<(), Box<dyn Error>> {
+        self.playback_control(Action::Pause)
     }
 
     pub fn stop(&self) -> Result<(), Box<dyn Error>> {

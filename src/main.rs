@@ -30,7 +30,11 @@ fn main() {
             player_controller.net_md_device.device_name().unwrap()
         );
 
-        player_controller.get_disc_subunit_identifier();
+        player_controller.play();
+
+        thread::sleep(Duration::from_secs(1));
+
+        player_controller.stop();
 
         /*
         let mut request: [u8; 19] = [0x00, 0x18, 0x06, 0x02, 0x20, 0x18,

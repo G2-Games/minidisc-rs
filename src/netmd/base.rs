@@ -225,4 +225,23 @@ impl NetMD {
             Err(error) => return Err(error.into()),
         }
     }
+
+    // TODO: Implement these properly, they will NOT work as is
+    pub fn read_bulk<const S: usize>(&self, chunksize: u32) -> Result<Vec<u8>, Box<dyn Error>> {
+        let result = self.read_bulk_to_array::<S>(chunksize)?;
+
+        Ok(result.to_vec())
+    }
+
+    pub fn read_bulk_to_array<const S: usize>(&self, chunksize: u32) -> Result<[u8; S], Box<dyn Error>> {
+        let mut buffer: [u8; S] = [0u8; S];
+
+        self.device_connection.read_bulk(
+            1,
+            &mut buffer,
+            DEFAULT_TIMEOUT
+        )?;
+
+        Ok(buffer)
+    }
 }
