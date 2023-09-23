@@ -15,12 +15,14 @@ fn main() {
             Err(_) => continue,
         };
 
-        println!("Connected to Bus {:03} Device {:03} VID: {:04x}, PID: {:04x}, {:?}",
+        println!(
+            "Connected to Bus {:03} Device {:03} VID: {:04x}, PID: {:04x}, {:?}",
             device.bus_number(),
             device.address(),
             device_desc.vendor_id(),
             device_desc.product_id(),
-            new_device.read_product_string_ascii(&device_desc));
+            new_device.read_product_string_ascii(&device_desc)
+        );
 
         let player = NetMD::new(new_device, device_desc).unwrap();
         let player_controller = NetMDInterface::new(player);

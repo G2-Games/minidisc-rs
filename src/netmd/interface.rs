@@ -81,7 +81,7 @@ impl std::convert::TryFrom<u8> for NetMDLevel {
             0x20 => Ok(NetMDLevel::Level1),
             0x50 => Ok(NetMDLevel::Level2),
             0x70 => Ok(NetMDLevel::Level3),
-            _ => Err("Value not valid NetMD Level".into())
+            _ => Err("Value not valid NetMD Level".into()),
         }
     }
 }
@@ -164,7 +164,7 @@ struct MediaInfo {
     implementation_profile_id: u8,
     media_type_attributes: u8,
     md_audio_version: u8,
-    supports_md_clip: u8
+    supports_md_clip: u8,
 }
 
 pub struct NetMDInterface {
@@ -179,7 +179,7 @@ impl NetMDInterface {
         NetMDInterface { net_md_device }
     }
 
-    fn construct_multibyte(&self, buffer: &Vec<u8>, n: u8, offset: &mut usize) -> u32{
+    fn construct_multibyte(&self, buffer: &Vec<u8>, n: u8, offset: &mut usize) -> u32 {
         let mut bytes = [0u8; 4];
         for i in 0..n as usize {
             bytes[i] = buffer[*offset];
@@ -212,7 +212,11 @@ impl NetMDInterface {
         let mut buffer_offset: usize = 0;
 
         for _ in 0..amt_of_root_object_lists {
-            root_objects.push(self.construct_multibyte(&buffer, size_of_list_id, &mut buffer_offset));
+            root_objects.push(self.construct_multibyte(
+                &buffer,
+                size_of_list_id,
+                &mut buffer_offset,
+            ));
         }
         println!("{:?}", root_objects);
 
@@ -246,7 +250,7 @@ impl NetMDInterface {
                 implementation_profile_id,
                 media_type_attributes,
                 md_audio_version,
-                supports_md_clip
+                supports_md_clip,
             })
         }
 
@@ -262,7 +266,7 @@ impl NetMDInterface {
                 continue;
             }
 
-            return NetMDLevel::try_from(media.implementation_profile_id)
+            return NetMDLevel::try_from(media.implementation_profile_id);
         }
         Err("No supported media types found".into())
     }
@@ -333,7 +337,8 @@ impl NetMDInterface {
                 Status::NotImplemented => return Err("Not implemented".into()),
                 Status::Rejected => return Err("Rejected".into()),
                 Status::Interim if !accept_interim => {
-                    let sleep_time = Self::INTERIM_RESPONSE_RETRY_INTERVAL as u64 * (u64::pow(2, current_attempt as u32) - 1);
+                    let sleep_time = Self::INTERIM_RESPONSE_RETRY_INTERVAL as u64
+                        * (u64::pow(2, current_attempt as u32) - 1);
                     let sleep_dur = std::time::Duration::from_millis(sleep_time);
                     std::thread::sleep(sleep_dur); // Sleep to wait before retrying
                     current_attempt += 1;
@@ -393,7 +398,10 @@ impl NetMDInterface {
 
     fn status(&self) -> Result<Vec<u8>, Box<dyn Error>> {
         self.change_descriptor_state(Descriptor::OperatingStatusBlock, DescriptorAction::OpenRead);
-        let mut query = vec![0x18, 0x09, 0x80, 0x01, 0x02, 0x30, 0x88, 0x00, 0x00, 0x30, 0x88, 0x04, 0x00, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00];
+        let mut query = vec![
+            0x18, 0x09, 0x80, 0x01, 0x02, 0x30, 0x88, 0x00, 0x00, 0x30, 0x88, 0x04, 0x00, 0xff,
+            0x00, 0x00, 0x00, 0x00, 0x00,
+        ];
         let response = self.send_query(&mut query, false, false)?;
 
         let res = response[22..].to_vec();
@@ -413,7 +421,10 @@ impl NetMDInterface {
 
     fn full_operating_status(&self) -> Result<(u8, u16), Box<dyn Error>> {
         self.change_descriptor_state(Descriptor::OperatingStatusBlock, DescriptorAction::OpenRead);
-        let mut query = vec![0x18, 0x09, 0x80, 0x01, 0x03, 0x30, 0x88, 0x02, 0x00, 0x30, 0x88, 0x05, 0x00, 0x30, 0x88, 0x06, 0x00, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00];
+        let mut query = vec![
+            0x18, 0x09, 0x80, 0x01, 0x03, 0x30, 0x88, 0x02, 0x00, 0x30, 0x88, 0x05, 0x00, 0x30,
+            0x88, 0x06, 0x00, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00,
+        ];
         let response = self.send_query(&mut query, false, false)?;
 
         let operating_status = response[27..].to_vec();
@@ -422,7 +433,7 @@ impl NetMDInterface {
         self.change_descriptor_state(Descriptor::OperatingStatusBlock, DescriptorAction::Close);
 
         if operating_status.len() < 2 {
-            return Err("Unparsable operating system".into())
+            return Err("Unparsable operating system".into());
         }
 
         let status_bytes = [operating_status[0], operating_status[1]];
@@ -440,7 +451,10 @@ impl NetMDInterface {
 
     fn playback_status_query(&self, p1: [u8; 2], p2: [u8; 2]) -> Result<Vec<u8>, Box<dyn Error>> {
         self.change_descriptor_state(Descriptor::OperatingStatusBlock, DescriptorAction::OpenRead);
-        let mut query = vec![0x18, 0x09, 0x80, 0x01, 0x03, 0x30, 0x00, 0x00, 0x00, 0x30, 0x88, 0x05, 0x00, 0x30, 0x00, 0x00, 0x00, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00];
+        let mut query = vec![
+            0x18, 0x09, 0x80, 0x01, 0x03, 0x30, 0x00, 0x00, 0x00, 0x30, 0x88, 0x05, 0x00, 0x30,
+            0x00, 0x00, 0x00, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00,
+        ];
 
         query[6] = p1[0];
         query[7] = p1[1];
