@@ -188,7 +188,7 @@ impl NetMDInterface {
         u32::from_le_bytes(bytes)
     }
 
-    fn get_disc_subunit_identifier(&self) -> Result<NetMDLevel, Box<dyn Error>> {
+    fn disc_subunit_identifier(&self) -> Result<NetMDLevel, Box<dyn Error>> {
         self.change_descriptor_state(
             Descriptor::DiscSubunitIdentifier,
             DescriptorAction::OpenRead,
@@ -267,42 +267,10 @@ impl NetMDInterface {
         Err("No supported media types found".into())
     }
 
-    fn playback_control(&self, action: Action) -> Result<(), Box<dyn Error>> {
-        let mut query = vec![0x18, 0xc3, 0xff, 0x00, 0x00, 0x00, 0x00];
+    fn net_md_level(&self) -> Result<NetMDLevel, Box<dyn Error>> {
+        let result = self.disc_subunit_identifier()?;
 
-        query[3] = action as u8;
-
-        let result = self.send_query(&mut query, false, false)?;
-
-        utils::check_result(result, &[0x18, 0xc5, 0x00, action as u8, 0x00, 0x00, 0x00])?;
-
-        Ok(())
-    }
-
-    pub fn play(&self) -> Result<(), Box<dyn Error>> {
-        self.playback_control(Action::Play)
-    }
-
-    pub fn fast_forward(&self) -> Result<(), Box<dyn Error>> {
-        self.playback_control(Action::FastForward)
-    }
-
-    pub fn rewind(&self) -> Result<(), Box<dyn Error>> {
-        self.playback_control(Action::Rewind)
-    }
-
-    pub fn pause(&self) -> Result<(), Box<dyn Error>> {
-        self.playback_control(Action::Pause)
-    }
-
-    pub fn stop(&self) -> Result<(), Box<dyn Error>> {
-        let mut query = vec![0x18, 0xc5, 0xff, 0x00, 0x00, 0x00, 0x00];
-
-        let result = self.send_query(&mut query, false, false)?;
-
-        utils::check_result(result, &[0x18, 0xc5, 0x00, 0x00, 0x00, 0x00, 0x00])?;
-
-        Ok(())
+        Ok(result)
     }
 
     fn change_descriptor_state(&self, descriptor: Descriptor, action: DescriptorAction) {
@@ -383,5 +351,116 @@ impl NetMDInterface {
 
         // This should NEVER happen unless the code is changed wrongly
         Err("The max retries is set to 0".into())
+    }
+
+    fn playback_control(&self, action: Action) -> Result<(), Box<dyn Error>> {
+        let mut query = vec![0x18, 0xc3, 0xff, 0x00, 0x00, 0x00, 0x00];
+
+        query[3] = action as u8;
+
+        let result = self.send_query(&mut query, false, false)?;
+
+        utils::check_result(result, &[0x18, 0xc5, 0x00, action as u8, 0x00, 0x00, 0x00])?;
+
+        Ok(())
+    }
+
+    pub fn play(&self) -> Result<(), Box<dyn Error>> {
+        self.playback_control(Action::Play)
+    }
+
+    pub fn fast_forward(&self) -> Result<(), Box<dyn Error>> {
+        self.playback_control(Action::FastForward)
+    }
+
+    pub fn rewind(&self) -> Result<(), Box<dyn Error>> {
+        self.playback_control(Action::Rewind)
+    }
+
+    pub fn pause(&self) -> Result<(), Box<dyn Error>> {
+        self.playback_control(Action::Pause)
+    }
+
+    pub fn stop(&self) -> Result<(), Box<dyn Error>> {
+        let mut query = vec![0x18, 0xc5, 0xff, 0x00, 0x00, 0x00, 0x00];
+
+        let result = self.send_query(&mut query, false, false)?;
+
+        utils::check_result(result, &[0x18, 0xc5, 0x00, 0x00, 0x00, 0x00, 0x00])?;
+
+        Ok(())
+    }
+
+    fn status(&self) -> Result<Vec<u8>, Box<dyn Error>> {
+        self.change_descriptor_state(Descriptor::OperatingStatusBlock, DescriptorAction::OpenRead);
+        let mut query = vec![0x18, 0x09, 0x80, 0x01, 0x02, 0x30, 0x88, 0x00, 0x00, 0x30, 0x88, 0x04, 0x00, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00];
+        let response = self.send_query(&mut query, false, false)?;
+
+        let res = response[22..].to_vec();
+
+        self.change_descriptor_state(Descriptor::OperatingStatusBlock, DescriptorAction::Close);
+
+        Ok(res)
+    }
+
+    pub fn is_disc_present(&self) -> Result<bool, Box<dyn Error>> {
+        let status = self.status()?;
+
+        println!("{:X?}", status);
+
+        Ok(status[4] == 0x40)
+    }
+
+    fn full_operating_status(&self) -> Result<(u8, u16), Box<dyn Error>> {
+        self.change_descriptor_state(Descriptor::OperatingStatusBlock, DescriptorAction::OpenRead);
+        let mut query = vec![0x18, 0x09, 0x80, 0x01, 0x03, 0x30, 0x88, 0x02, 0x00, 0x30, 0x88, 0x05, 0x00, 0x30, 0x88, 0x06, 0x00, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00];
+        let response = self.send_query(&mut query, false, false)?;
+
+        let operating_status = response[27..].to_vec();
+        let status_mode = response[20];
+
+        self.change_descriptor_state(Descriptor::OperatingStatusBlock, DescriptorAction::Close);
+
+        if operating_status.len() < 2 {
+            return Err("Unparsable operating system".into())
+        }
+
+        let status_bytes = [operating_status[0], operating_status[1]];
+
+        let operating_status_number = u16::from_le_bytes(status_bytes);
+
+        Ok((status_mode, operating_status_number))
+    }
+
+    fn operating_status(&self) -> Result<u16, Box<dyn Error>> {
+        let status = self.full_operating_status()?.1;
+
+        Ok(status)
+    }
+
+    fn playback_status_query(&self, p1: [u8; 2], p2: [u8; 2]) -> Result<Vec<u8>, Box<dyn Error>> {
+        self.change_descriptor_state(Descriptor::OperatingStatusBlock, DescriptorAction::OpenRead);
+        let mut query = vec![0x18, 0x09, 0x80, 0x01, 0x03, 0x30, 0x00, 0x00, 0x00, 0x30, 0x88, 0x05, 0x00, 0x30, 0x00, 0x00, 0x00, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00];
+
+        query[6] = p1[0];
+        query[7] = p1[1];
+        query[14] = p2[0];
+        query[15] = p2[1];
+
+        let response = self.send_query(&mut query, false, false)?;
+
+        let playback_status = response[24..].to_vec();
+
+        self.change_descriptor_state(Descriptor::OperatingStatusBlock, DescriptorAction::Close);
+
+        Ok(playback_status)
+    }
+
+    pub fn playback_status1(&self) -> Result<Vec<u8>, Box<dyn Error>> {
+        self.playback_status_query([0x88, 0x01], [0x88, 0x07])
+    }
+
+    pub fn playback_status2(&self) -> Result<Vec<u8>, Box<dyn Error>> {
+        self.playback_status_query([0x88, 0x02], [0x88, 0x06])
     }
 }

@@ -32,6 +32,10 @@ fn main() {
 
         player_controller.play();
 
+        println!("{:?}", player_controller.playback_status2());
+        thread::sleep(Duration::from_secs(1));
+        println!("{:?}", player_controller.playback_status2());
+
         thread::sleep(Duration::from_secs(1));
 
         player_controller.stop();

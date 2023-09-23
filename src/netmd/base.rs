@@ -10,6 +10,8 @@ const STANDARD_SEND: u8 =
 const STANDARD_RECV: u8 =
     rusb::request_type(Direction::In, RequestType::Vendor, Recipient::Interface);
 
+pub const CHUNKSIZE: u32 = 0x10000;
+
 // TODO: I think this sucks, figure out a better way
 pub static DEVICE_IDS: Lazy<Vec<DeviceId>> = Lazy::new(|| nofmt::pls!{
     Vec::from([
@@ -134,7 +136,7 @@ impl NetMD {
 
     /// Poll the device to get either the result
     /// of the previous command, or the status
-    fn poll(&self, tries: usize) -> Result<(usize, [u8; 4]), Box<dyn Error>> {
+    fn poll(&self, tries: usize) -> Result<(u16, [u8; 4]), Box<dyn Error>> {
         // Create an array to store the result of the poll
         let mut poll_result = [0u8; 4];
 
@@ -152,8 +154,10 @@ impl NetMD {
                 Err(error) => return Err(error.into()),
             };
 
+            let length_bytes = [poll_result[2], poll_result[3]];
+
             if poll_result[0] != 0 {
-                return Ok((poll_result[2] as usize, poll_result));
+                return Ok((u16::from_le_bytes(length_bytes), poll_result));
             }
 
             if i > 0 {
@@ -161,7 +165,9 @@ impl NetMD {
             }
         }
 
-        Ok((poll_result[2] as usize, poll_result))
+        // This should not contain anything
+        let length_bytes = [poll_result[2], poll_result[3]];
+        Ok((u16::from_le_bytes(length_bytes), poll_result))
     }
 
     /// Send a control message to the device
@@ -179,14 +185,14 @@ impl NetMD {
             Err(error) => return Err(error),
         };
 
-        let _ = match use_factory_command {
+        let request = match use_factory_command {
             false => 0x80,
             true => 0xff,
         };
 
         match self.device_connection.write_control(
             STANDARD_SEND,
-            0x80,
+            request,
             0,
             0,
             &command,
@@ -211,7 +217,7 @@ impl NetMD {
         };
 
         // Create a buffer to fill with the result
-        let mut buf: [u8; 255] = [0; 255];
+        let mut buf: Vec<u8> = vec![0; poll_result.0 as usize];
 
         match self.device_connection.read_control(
             STANDARD_RECV,
@@ -221,27 +227,34 @@ impl NetMD {
             &mut buf,
             DEFAULT_TIMEOUT,
         ) {
-            Ok(_) => Ok(buf[0..poll_result.0].to_vec()),
+            Ok(_) => Ok(buf),
             Err(error) => return Err(error.into()),
         }
     }
 
-    // TODO: Implement these properly, they will NOT work as is
-    pub fn read_bulk<const S: usize>(&self, chunksize: u32) -> Result<Vec<u8>, Box<dyn Error>> {
-        let result = self.read_bulk_to_array::<S>(chunksize)?;
+    // Default chunksize should be 0x10000
+    pub fn read_bulk(&self, length: u32, chunksize: u32) -> Result<Vec<u8>, Box<dyn Error>> {
+        let result = self.read_bulk_to_array(length, chunksize)?;
 
         Ok(result.to_vec())
     }
 
-    pub fn read_bulk_to_array<const S: usize>(&self, chunksize: u32) -> Result<[u8; S], Box<dyn Error>> {
-        let mut buffer: [u8; S] = [0u8; S];
+    pub fn read_bulk_to_array(&self, length: u32, chunksize: u32) -> Result<Vec<u8>, Box<dyn Error>> {
+        let final_result: Vec<u8> = Vec::new();
+        let mut done = 0;
 
-        self.device_connection.read_bulk(
-            1,
-            &mut buffer,
-            DEFAULT_TIMEOUT
-        )?;
+        while done < length {
+            let to_read = std::cmp::min(chunksize, length - done);
+            let mut buffer: Vec<u8> = vec![0; to_read as usize];
 
-        Ok(buffer)
+            done += self.device_connection.read_bulk(
+                1,
+                &mut buffer,
+                DEFAULT_TIMEOUT
+            )? as u32;
+
+        }
+
+        Ok(final_result)
     }
 }
