@@ -38,7 +38,8 @@ fn main() {
 
         for i in 0..player_controller.track_count().unwrap() {
             println!(
-                "Track {i: >2}: {: >21} | {}",
+                "Track {: >2}: {: >21} | {}",
+                i + 1,
                 player_controller.track_title(i as u16, false).unwrap(),
                 player_controller.track_title(i as u16, true).unwrap()
             );
