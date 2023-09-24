@@ -160,7 +160,6 @@ impl NetMD {
         };
 
         let length_bytes = [poll_result[2], poll_result[3]];
-        println!("Poll result: {}", u16::from_le_bytes(length_bytes));
         Ok((u16::from_le_bytes(length_bytes), poll_result))
     }
 
@@ -209,19 +208,26 @@ impl NetMD {
         self._read_reply(false, override_length)
     }
 
-    pub fn read_factory_reply(&self, override_length: Option<i32>) -> Result<Vec<u8>, Box<dyn Error>> {
+    pub fn read_factory_reply(
+        &self,
+        override_length: Option<i32>,
+    ) -> Result<Vec<u8>, Box<dyn Error>> {
         self._read_reply(true, override_length)
     }
 
     /// Poll to see if a message is ready,
     /// and if so, recieve it
-    fn _read_reply(&self, use_factory_command: bool, override_length: Option<i32>) -> Result<Vec<u8>, Box<dyn Error>> {
+    fn _read_reply(
+        &self,
+        use_factory_command: bool,
+        override_length: Option<i32>,
+    ) -> Result<Vec<u8>, Box<dyn Error>> {
         let mut length = self.poll()?.0;
 
         let mut current_attempt = 0;
         while length == 0 {
             let sleep_time = Self::READ_REPLY_RETRY_INTERVAL as u64
-                            * (u64::pow(2, current_attempt as u32 / 10) - 1);
+                * (u64::pow(2, current_attempt as u32 / 10) - 1);
 
             std::thread::sleep(std::time::Duration::from_millis(sleep_time));
             length = self.poll()?.0;
@@ -230,7 +236,7 @@ impl NetMD {
 
         match override_length {
             Some(value) => length = value as u16,
-            None => ()
+            None => (),
         }
 
         let request = match use_factory_command {

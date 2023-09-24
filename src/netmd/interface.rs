@@ -1,7 +1,10 @@
 use crate::netmd::utils;
 use crate::NetMD;
+use encoding_rs::*;
+use std::collections::HashMap;
 use std::error::Error;
-use std::fmt;
+
+use super::utils::half_width_to_full_width_range;
 
 #[derive(Copy, Clone)]
 enum Action {
@@ -411,15 +414,33 @@ impl NetMDInterface {
     }
 
     fn acquire(&self) -> Result<(), Box<dyn Error>> {
-        let mut query = vec![0xff, 0x01, 0x0c, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff];
+        let mut query = vec![
+            0xff, 0x01, 0x0c, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+            0xff,
+        ];
         let reply = self.send_query(&mut query, false, false)?;
-        utils::check_result(reply, &[0xff, 0x01, 0x0c, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff])
+        utils::check_result(
+            reply,
+            &[
+                0xff, 0x01, 0x0c, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+                0xff,
+            ],
+        )
     }
 
     fn release(&self) -> Result<(), Box<dyn Error>> {
-        let mut query = vec![0xff, 0x01, 0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff];
+        let mut query = vec![
+            0xff, 0x01, 0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+            0xff,
+        ];
         let reply = self.send_query(&mut query, false, false)?;
-        utils::check_result(reply, &[0xff, 0x01, 0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff])
+        utils::check_result(
+            reply,
+            &[
+                0xff, 0x01, 0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+                0xff,
+            ],
+        )
     }
 
     fn status(&self) -> Result<Vec<u8>, Box<dyn Error>> {
@@ -504,18 +525,18 @@ impl NetMDInterface {
         self.playback_status_query([0x88, 0x02], [0x88, 0x06])
     }
 
-    pub fn get_position(&self) -> Result<[u16; 5], Box<dyn Error>> {
+    pub fn position(&self) -> Result<[u16; 5], Box<dyn Error>> {
         self.change_descriptor_state(Descriptor::OperatingStatusBlock, DescriptorAction::OpenRead);
 
         let mut query = vec![
             0x18, 0x09, 0x80, 0x01, 0x04, 0x30, 0x88, 0x02, 0x00, 0x30, 0x88, 0x05, 0x00, 0x30,
-            0x00, 0x03, 0x00, 0x30, 0x00, 0x02, 0x00, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00
+            0x00, 0x03, 0x00, 0x30, 0x00, 0x02, 0x00, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00,
         ];
 
         let reply = match self.send_query(&mut query, false, false) {
             Ok(result) => result,
             Err(e) if e.to_string() == "Rejected" => Vec::new(),
-            Err(e) => return Err(e)
+            Err(e) => return Err(e),
         };
 
         let track_number = u16::from_be_bytes([reply[35], reply[36]]);
@@ -525,7 +546,13 @@ impl NetMDInterface {
         let second = utils::byte_from_bcd(reply[39])?;
         let frame = utils::byte_from_bcd(reply[40])?;
 
-        let final_result = [track_number, hour as u16, minute as u16, second as u16, frame as u16];
+        let final_result = [
+            track_number,
+            hour as u16,
+            minute as u16,
+            second as u16,
+            frame as u16,
+        ];
 
         self.change_descriptor_state(Descriptor::OperatingStatusBlock, DescriptorAction::Close);
 
@@ -542,13 +569,14 @@ impl NetMDInterface {
         let mut query = vec![0x18, 0xc1, 0xff, 0x60, 0x00];
         match self.send_query(&mut query, true, false) {
             Ok(_) => Ok(true),
-            Err(error) => Err(error)
+            Err(error) => Err(error),
         }
     }
 
+    /* Track control */
+
     pub fn go_to_track(&self, track_number: u16) -> Result<u16, Box<dyn Error>> {
-        let mut query = vec![0x18, 0x50, 0xff, 0x01, 0x00, 0x00, 0x00, 0x00,
-                             0b00, 0b00];
+        let mut query = vec![0x18, 0x50, 0xff, 0x01, 0x00, 0x00, 0x00, 0x00, 0b00, 0b00];
 
         let bytes = track_number.to_le_bytes();
 
@@ -560,9 +588,17 @@ impl NetMDInterface {
         Ok(u16::from_be_bytes([reply[8], reply[9]]))
     }
 
-    pub fn go_to_time(&self, track_number: u16, hour: u8, minute: u8, second: u8, frame: u8) -> Result<u16, Box<dyn Error>> {
-        let mut query = vec![0x18, 0x50, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00,
-                             0b00, 0b00, 0b00, 0b00, 0b00, 0b00];
+    pub fn go_to_time(
+        &self,
+        track_number: u16,
+        hour: u8,
+        minute: u8,
+        second: u8,
+        frame: u8,
+    ) -> Result<u16, Box<dyn Error>> {
+        let mut query = vec![
+            0x18, 0x50, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0b00, 0b00, 0b00, 0b00, 0b00, 0b00,
+        ];
 
         let bytes = track_number.to_le_bytes();
         query[8] = bytes[1];
@@ -579,8 +615,7 @@ impl NetMDInterface {
     }
 
     fn _track_change(&self, direction: Track) -> Result<(), Box<dyn Error>> {
-        let mut query = vec![0x18, 0x50, 0xff, 0x10, 0x00, 0x00, 0x00, 0x00,
-                             0b00, 0b00];
+        let mut query = vec![0x18, 0x50, 0xff, 0x10, 0x00, 0x00, 0x00, 0x00, 0b00, 0b00];
 
         let direction_number = direction as u16;
         let direction_bytes = direction_number.to_le_bytes();
@@ -603,5 +638,172 @@ impl NetMDInterface {
 
     pub fn restart_track(&self) -> Result<(), Box<dyn Error>> {
         self._track_change(Track::Next)
+    }
+
+    /* Content access and control */
+    pub fn erase_disc(&self) -> Result<(), Box<dyn Error>> {
+        let mut query = vec![0x18, 0x40, 0xff, 0x00, 0x00];
+        let reply = self.send_query(&mut query, false, false)?;
+        utils::check_result(reply, &[0x18, 0x40, 0x00, 0x00, 0x00])
+    }
+
+    // TODO: Ensure this is returning the correct value, it
+    // looks like it actually might be a 16 bit integer
+    pub fn disc_flags(&self) -> Result<u8, Box<dyn Error>> {
+        self.change_descriptor_state(Descriptor::RootTD, DescriptorAction::OpenRead);
+        let mut query = vec![
+            0x18, 0x06, 0x01, 0x10, 0x10, 0x00, 0xff, 0x00, 0x00, 0x01, 0x00, 0x0b,
+        ];
+
+        let reply = self.send_query(&mut query, false, false)?;
+
+        let flags = reply[12];
+        self.change_descriptor_state(Descriptor::RootTD, DescriptorAction::Close);
+
+        Ok(flags)
+    }
+
+    pub fn track_count(&self) -> Result<u8, Box<dyn Error>> {
+        self.change_descriptor_state(Descriptor::AudioContentsTD, DescriptorAction::OpenRead);
+
+        let mut query = vec![
+            0x18, 0x06, 0x02, 0x10, 0x10, 0x01, 0x30, 0x00, 0x10, 0x00, 0xff, 0x00, 0x00, 0x00,
+            0x00, 0x00,
+        ];
+
+        let reply = self.send_query(&mut query, false, false)?;
+
+        let track_count = reply[24];
+
+        self.change_descriptor_state(Descriptor::AudioContentsTD, DescriptorAction::Close);
+
+        Ok(track_count)
+    }
+
+    fn _disc_title(&self, wchar: bool) -> Result<String, Box<dyn Error>> {
+        self.change_descriptor_state(Descriptor::AudioContentsTD, DescriptorAction::OpenRead);
+        self.change_descriptor_state(Descriptor::DiscTitleTD, DescriptorAction::OpenRead);
+
+        let mut done: u16 = 0;
+        let mut remaining: u16 = 0;
+        let mut total = 1;
+        let mut result: Vec<String> = Vec::new();
+        let mut chunksize = 0;
+        let mut chunk = String::new();
+
+        while done < total {
+            let mut query = vec![
+                0x18, 0x06, 0x02, 0x20, 0x18, 0x01, 0x00, 0b00, 0x30, 0x00, 0x0a, 0x00, 0xff, 0x00,
+                0b00, 0b00, 0b00, 0b00,
+            ];
+
+            query[7] = match wchar {
+                true => 1,
+                false => 0,
+            };
+
+            let remain_bytes = remaining.to_le_bytes();
+            query[14] = remain_bytes[0];
+            query[15] = remain_bytes[1];
+
+            let done_bytes = done.to_le_bytes();
+            query[16] = done_bytes[0];
+            query[17] = done_bytes[1];
+
+            let reply = self.send_query(&mut query, false, false)?;
+
+            if remaining == 0 {
+                chunksize = u16::from_le_bytes([reply[13], reply[14]]);
+                total = u16::from_le_bytes([reply[22], reply[23]]);
+
+                chunk = SHIFT_JIS.decode(&reply[25..]).0.into();
+
+                chunksize -= 6;
+            } else {
+                chunksize = u16::from_le_bytes([reply[13], reply[14]]);
+                chunk = SHIFT_JIS.decode(&reply[18..]).0.into();
+            }
+
+            result.push(chunk);
+            done += chunksize;
+            remaining = total - done;
+        }
+
+        let final_result = result.join("");
+
+        Ok(final_result)
+    }
+
+    pub fn disc_title(&self, wchar: bool) -> Result<String, Box<dyn Error>> {
+        let mut title = self._disc_title(wchar)?;
+
+        let delim = match wchar {
+            true => "／／",
+            false => "//",
+        };
+
+        let title_marker = match wchar {
+            true => "０；",
+            false => "0;",
+        };
+
+        if title.ends_with(delim) {
+            let first_entry = title.split(delim).collect::<Vec<&str>>()[0];
+            if first_entry.starts_with(title_marker) {
+                title = first_entry[title_marker.len()..].to_string();
+            } else {
+                title = String::new();
+            }
+        }
+
+        Ok(title)
+    }
+
+    pub fn track_group_list(&self) -> Result<(), Box<dyn Error>> {
+        let raw_title = self._disc_title(false)?;
+        let group_list = raw_title.split("//");
+        let mut track_dict: HashMap<u16, (String, u16)> = HashMap::new();
+        let track_count = self.track_count();
+        let result: Vec<(String, String, u16)> = Vec::new();
+
+        let raw_full_title = self._disc_title(true)?;
+
+        let mut full_width_group_list = raw_full_title.split("／／");
+
+        for (i, group) in group_list.enumerate() {
+            if group == "" {
+                continue;
+            }
+
+            if group.starts_with("0;") || group.find(";") == None || raw_title.find("//") == None {
+                continue;
+            }
+
+            let track_range: String = match group.split_once(";") {
+                Some(string) => string.0.to_string(),
+                None => return Err("No groups were found".into()),
+            };
+            if track_range.len() == 0 {
+                continue;
+            }
+
+            let group_name = &group[track_range.len() + 1..];
+
+            println!("{}", group_name);
+
+            let full_width_range = utils::half_width_to_full_width_range(track_range);
+
+            //println!("{:?}", full_width_group_list);
+
+            let full_width_group_name = full_width_group_list
+                .find(|n| n.starts_with(&full_width_range))
+                .unwrap()
+                .split_once("；")
+                .unwrap()
+                .1;
+
+            println!("{}", full_width_group_name);
+        }
+        Ok(())
     }
 }

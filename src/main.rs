@@ -32,20 +32,10 @@ fn main() {
             player_controller.net_md_device.device_name().unwrap()
         );
 
-        println!("{:?}", player_controller.get_position());
-        println!("{:?}", player_controller.go_to_time(0, 0, 2, 0, 0));
-        let _ = player_controller.play();
-        thread::sleep(Duration::from_secs(5));
-        println!("{:?}", player_controller.get_position());
-        println!("{:?}", player_controller.go_to_time(10, 0, 1, 15, 0));
-        println!("{:?}", player_controller.get_position());
-
-        thread::sleep(Duration::from_secs(10));
-        println!("{:?}", player_controller.get_position());
-
-        thread::sleep(Duration::from_secs(5));
-
-        let _ = player_controller.stop();
+        println!("Disc Flags?  {:?}", player_controller.disc_flags());
+        println!("Track Count: {:?}", player_controller.track_count());
+        println!("Disc Title:  {:?}", player_controller.disc_title(false));
+        println!("Track Group List: {:?}", player_controller.track_group_list());
 
         /*
         let mut request: [u8; 19] = [0x00, 0x18, 0x06, 0x02, 0x20, 0x18,
