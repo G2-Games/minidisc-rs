@@ -35,7 +35,14 @@ fn main() {
         println!("Disc Flags?  {:?}", player_controller.disc_flags());
         println!("Track Count: {:?}", player_controller.track_count());
         println!("Disc Title:  {:?}", player_controller.disc_title(false));
-        println!("Track Group List: {:?}", player_controller.track_group_list());
+
+        for i in 0..player_controller.track_count().unwrap() {
+            println!(
+                "Track {i: >2}: {: >21} | {}",
+                player_controller.track_title(i as u16, false).unwrap(),
+                player_controller.track_title(i as u16, true).unwrap()
+            );
+        }
 
         /*
         let mut request: [u8; 19] = [0x00, 0x18, 0x06, 0x02, 0x20, 0x18,

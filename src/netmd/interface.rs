@@ -117,6 +117,7 @@ impl Descriptor {
     }
 }
 
+#[derive(Copy, Clone)]
 enum DescriptorAction {
     OpenRead = 1,
     OpenWrite = 3,
@@ -195,8 +196,8 @@ impl NetMDInterface {
     // TODO: Finish proper implementation
     fn disc_subunit_identifier(&self) -> Result<NetMDLevel, Box<dyn Error>> {
         self.change_descriptor_state(
-            Descriptor::DiscSubunitIdentifier,
-            DescriptorAction::OpenRead,
+            &Descriptor::DiscSubunitIdentifier,
+            &DescriptorAction::OpenRead,
         );
 
         let mut query = vec![0x18, 0x09, 0x00, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00];
@@ -264,7 +265,7 @@ impl NetMDInterface {
         let manufacturer_dep_data = &buffer[buffer_offset..buffer_offset + manufacturer_dep_length as usize];
         */
 
-        self.change_descriptor_state(Descriptor::DiscSubunitIdentifier, DescriptorAction::Close);
+        self.change_descriptor_state(&Descriptor::DiscSubunitIdentifier, &DescriptorAction::Close);
 
         for media in supported_media_type_specifications {
             if media.supported_media_type != 0x301 {
@@ -294,12 +295,12 @@ impl NetMDInterface {
         Ok(result)
     }
 
-    fn change_descriptor_state(&self, descriptor: Descriptor, action: DescriptorAction) {
+    fn change_descriptor_state(&self, descriptor: &Descriptor, action: &DescriptorAction) {
         let mut query = vec![0x18, 0x08];
 
         query.append(&mut descriptor.get_array());
 
-        query.push(action as u8);
+        query.push(*action as u8);
 
         query.push(0x00);
 
@@ -444,7 +445,10 @@ impl NetMDInterface {
     }
 
     fn status(&self) -> Result<Vec<u8>, Box<dyn Error>> {
-        self.change_descriptor_state(Descriptor::OperatingStatusBlock, DescriptorAction::OpenRead);
+        self.change_descriptor_state(
+            &Descriptor::OperatingStatusBlock,
+            &DescriptorAction::OpenRead,
+        );
         let mut query = vec![
             0x18, 0x09, 0x80, 0x01, 0x02, 0x30, 0x88, 0x00, 0x00, 0x30, 0x88, 0x04, 0x00, 0xff,
             0x00, 0x00, 0x00, 0x00, 0x00,
@@ -453,7 +457,7 @@ impl NetMDInterface {
 
         let res = response[22..].to_vec();
 
-        self.change_descriptor_state(Descriptor::OperatingStatusBlock, DescriptorAction::Close);
+        self.change_descriptor_state(&Descriptor::OperatingStatusBlock, &DescriptorAction::Close);
 
         Ok(res)
     }
@@ -467,7 +471,10 @@ impl NetMDInterface {
     }
 
     fn full_operating_status(&self) -> Result<(u8, u16), Box<dyn Error>> {
-        self.change_descriptor_state(Descriptor::OperatingStatusBlock, DescriptorAction::OpenRead);
+        self.change_descriptor_state(
+            &Descriptor::OperatingStatusBlock,
+            &DescriptorAction::OpenRead,
+        );
         let mut query = vec![
             0x18, 0x09, 0x80, 0x01, 0x03, 0x30, 0x88, 0x02, 0x00, 0x30, 0x88, 0x05, 0x00, 0x30,
             0x88, 0x06, 0x00, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -477,7 +484,7 @@ impl NetMDInterface {
         let operating_status = response[27..].to_vec();
         let status_mode = response[20];
 
-        self.change_descriptor_state(Descriptor::OperatingStatusBlock, DescriptorAction::Close);
+        self.change_descriptor_state(&Descriptor::OperatingStatusBlock, &DescriptorAction::Close);
 
         if operating_status.len() < 2 {
             return Err("Unparsable operating system".into());
@@ -497,7 +504,10 @@ impl NetMDInterface {
     }
 
     fn playback_status_query(&self, p1: [u8; 2], p2: [u8; 2]) -> Result<Vec<u8>, Box<dyn Error>> {
-        self.change_descriptor_state(Descriptor::OperatingStatusBlock, DescriptorAction::OpenRead);
+        self.change_descriptor_state(
+            &Descriptor::OperatingStatusBlock,
+            &DescriptorAction::OpenRead,
+        );
         let mut query = vec![
             0x18, 0x09, 0x80, 0x01, 0x03, 0x30, 0x00, 0x00, 0x00, 0x30, 0x88, 0x05, 0x00, 0x30,
             0x00, 0x00, 0x00, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -512,7 +522,7 @@ impl NetMDInterface {
 
         let playback_status = response[24..].to_vec();
 
-        self.change_descriptor_state(Descriptor::OperatingStatusBlock, DescriptorAction::Close);
+        self.change_descriptor_state(&Descriptor::OperatingStatusBlock, &DescriptorAction::Close);
 
         Ok(playback_status)
     }
@@ -526,7 +536,10 @@ impl NetMDInterface {
     }
 
     pub fn position(&self) -> Result<[u16; 5], Box<dyn Error>> {
-        self.change_descriptor_state(Descriptor::OperatingStatusBlock, DescriptorAction::OpenRead);
+        self.change_descriptor_state(
+            &Descriptor::OperatingStatusBlock,
+            &DescriptorAction::OpenRead,
+        );
 
         let mut query = vec![
             0x18, 0x09, 0x80, 0x01, 0x04, 0x30, 0x88, 0x02, 0x00, 0x30, 0x88, 0x05, 0x00, 0x30,
@@ -554,7 +567,7 @@ impl NetMDInterface {
             frame as u16,
         ];
 
-        self.change_descriptor_state(Descriptor::OperatingStatusBlock, DescriptorAction::Close);
+        self.change_descriptor_state(&Descriptor::OperatingStatusBlock, &DescriptorAction::Close);
 
         Ok(final_result)
     }
@@ -650,7 +663,7 @@ impl NetMDInterface {
     // TODO: Ensure this is returning the correct value, it
     // looks like it actually might be a 16 bit integer
     pub fn disc_flags(&self) -> Result<u8, Box<dyn Error>> {
-        self.change_descriptor_state(Descriptor::RootTD, DescriptorAction::OpenRead);
+        self.change_descriptor_state(&Descriptor::RootTD, &DescriptorAction::OpenRead);
         let mut query = vec![
             0x18, 0x06, 0x01, 0x10, 0x10, 0x00, 0xff, 0x00, 0x00, 0x01, 0x00, 0x0b,
         ];
@@ -658,13 +671,13 @@ impl NetMDInterface {
         let reply = self.send_query(&mut query, false, false)?;
 
         let flags = reply[12];
-        self.change_descriptor_state(Descriptor::RootTD, DescriptorAction::Close);
+        self.change_descriptor_state(&Descriptor::RootTD, &DescriptorAction::Close);
 
         Ok(flags)
     }
 
     pub fn track_count(&self) -> Result<u8, Box<dyn Error>> {
-        self.change_descriptor_state(Descriptor::AudioContentsTD, DescriptorAction::OpenRead);
+        self.change_descriptor_state(&Descriptor::AudioContentsTD, &DescriptorAction::OpenRead);
 
         let mut query = vec![
             0x18, 0x06, 0x02, 0x10, 0x10, 0x01, 0x30, 0x00, 0x10, 0x00, 0xff, 0x00, 0x00, 0x00,
@@ -675,14 +688,14 @@ impl NetMDInterface {
 
         let track_count = reply[24];
 
-        self.change_descriptor_state(Descriptor::AudioContentsTD, DescriptorAction::Close);
+        self.change_descriptor_state(&Descriptor::AudioContentsTD, &DescriptorAction::Close);
 
         Ok(track_count)
     }
 
     fn _disc_title(&self, wchar: bool) -> Result<String, Box<dyn Error>> {
-        self.change_descriptor_state(Descriptor::AudioContentsTD, DescriptorAction::OpenRead);
-        self.change_descriptor_state(Descriptor::DiscTitleTD, DescriptorAction::OpenRead);
+        self.change_descriptor_state(&Descriptor::AudioContentsTD, &DescriptorAction::OpenRead);
+        self.change_descriptor_state(&Descriptor::DiscTitleTD, &DescriptorAction::OpenRead);
 
         let mut done: u16 = 0;
         let mut remaining: u16 = 0;
@@ -731,6 +744,9 @@ impl NetMDInterface {
 
         let final_result = result.join("");
 
+        self.change_descriptor_state(&Descriptor::DiscTitleTD, &DescriptorAction::Close);
+        self.change_descriptor_state(&Descriptor::AudioContentsTD, &DescriptorAction::Close);
+
         Ok(final_result)
     }
 
@@ -759,12 +775,14 @@ impl NetMDInterface {
         Ok(title)
     }
 
-    pub fn track_group_list(&self) -> Result<(), Box<dyn Error>> {
+    pub fn track_group_list(
+        &self,
+    ) -> Result<Vec<(Option<String>, Option<String>, Vec<u16>)>, Box<dyn Error>> {
         let raw_title = self._disc_title(false)?;
         let group_list = raw_title.split("//");
         let mut track_dict: HashMap<u16, (String, u16)> = HashMap::new();
-        let track_count = self.track_count();
-        let result: Vec<(String, String, u16)> = Vec::new();
+        let track_count = self.track_count()?;
+        let mut result: Vec<(Option<String>, Option<String>, Vec<u16>)> = Vec::new();
 
         let raw_full_title = self._disc_title(true)?;
 
@@ -789,11 +807,7 @@ impl NetMDInterface {
 
             let group_name = &group[track_range.len() + 1..];
 
-            println!("{}", group_name);
-
-            let full_width_range = utils::half_width_to_full_width_range(track_range);
-
-            //println!("{:?}", full_width_group_list);
+            let full_width_range = utils::half_width_to_full_width_range(&track_range);
 
             let full_width_group_name = full_width_group_list
                 .find(|n| n.starts_with(&full_width_range))
@@ -802,8 +816,82 @@ impl NetMDInterface {
                 .unwrap()
                 .1;
 
-            println!("{}", full_width_group_name);
+            let mut track_minmax: Vec<&str> = Vec::new();
+            if track_range.find("-") != None {
+                track_minmax = track_range.split("-").collect();
+            } else {
+                track_minmax.push(&track_range.as_str());
+            }
+
+            let (track_min, mut track_max) = (
+                track_minmax[0].parse::<u16>().unwrap(),
+                track_minmax[1].parse::<u16>().unwrap(),
+            );
+
+            track_max = u16::min(track_max, track_count as u16);
+
+            // TODO: Do some error handling here
+            assert!(track_min <= track_max);
+
+            println!("{}, {}", track_min, track_max);
+
+            let mut track_list: Vec<u16> = Vec::new();
+            for track in track_min - 1..track_max {
+                if track_dict.contains_key(&track) {
+                    return Err(
+                        format!("Track {track} is in 2 groups: {}", track_dict[&track].0).into(),
+                    );
+                }
+                track_dict.insert(track, (String::from(group_name), i as u16));
+                track_list.push(track);
+            }
+
+            result.push((
+                Some(String::from(group_name)),
+                Some(String::from(full_width_group_name)),
+                track_list.clone(),
+            ));
         }
-        Ok(())
+
+        for i in 0..track_count as u16 {
+            if !track_dict.contains_key(&i) {
+                result.insert(0, (None, None, Vec::from([i])))
+            }
+        }
+
+        println!("{:#?}", result);
+        Ok(result)
+    }
+
+    /// Gets the title of a track at a specified index
+    pub fn track_title(&self, track: u16, wchar: bool) -> Result<String, Box<dyn Error>> {
+        let mut query = vec![
+            0x18, 0x06, 0x02, 0x20, 0x18, 0b00, 0b00, 0b00, 0x30, 0x00, 0x0a, 0x00, 0xff, 0x00,
+            0x00, 0x00, 0x00, 0x00,
+        ];
+        query[5] = match wchar {
+            true => 3,
+            false => 2,
+        };
+
+        let descriptor_type = match wchar {
+            true => Descriptor::AudioUTOC4TD,
+            false => Descriptor::AudioUTOC1TD,
+        };
+
+        self.change_descriptor_state(&descriptor_type, &DescriptorAction::OpenRead);
+
+        let track_bytes = track.to_le_bytes();
+        query[6] = track_bytes[1];
+        query[7] = track_bytes[0];
+
+        let reply = self.send_query(&mut query, false, false)?;
+
+        let array_len = u16::from_le_bytes([reply[24], reply[23]]);
+        let title_array = &reply[25..array_len as usize + 25];
+
+        self.change_descriptor_state(&descriptor_type, &DescriptorAction::Close);
+
+        Ok(SHIFT_JIS.decode(title_array).0.to_string())
     }
 }

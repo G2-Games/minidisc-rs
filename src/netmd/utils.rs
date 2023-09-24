@@ -35,7 +35,7 @@ pub fn bcd_from_byte(byte: u8) -> Result<u8, Box<dyn Error>> {
     Ok(new_byte)
 }
 
-pub fn half_width_to_full_width_range(range: String) -> String {
+pub fn half_width_to_full_width_range(range: &String) -> String {
     let mappings: HashMap<char, char> = HashMap::from([
         ('0', '０'),
         ('1', '１'),
