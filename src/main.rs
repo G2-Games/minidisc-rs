@@ -19,7 +19,10 @@ fn main() {
             new_device.read_product_string_ascii(&device_desc)
         );
 
-        let player_controller = netmd::interface::NetMDInterface::new(new_device, device_desc);
+        let player_controller = match netmd::interface::NetMDInterface::new(new_device, device_desc) {
+            Ok(player) => player,
+            Err(_) => continue
+        };
 
         println!(
             "Player Model: {}",
