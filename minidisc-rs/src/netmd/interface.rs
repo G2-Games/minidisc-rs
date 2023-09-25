@@ -1,5 +1,5 @@
 use crate::netmd::query_utils::{format_query, scan_query};
-use crate::netmd::utils;
+use crate::netmd::utils::{length_after_encoding_to_jis, half_width_to_full_width_range};
 use crate::netmd::base;
 use encoding_rs::*;
 use std::collections::HashMap;
@@ -189,7 +189,7 @@ impl NetMDInterface {
 
     fn construct_multibyte(&self, buffer: &Vec<u8>, n: u8, offset: &mut usize) -> u32 {
         let mut output: u32 = 0;
-        for i in 0..n as usize {
+        for _ in 0..n as usize {
             output <<= 8;
             output |= buffer[*offset] as u32;
             *offset += 1;
@@ -736,12 +736,12 @@ impl NetMDInterface {
         self.change_descriptor_state(&Descriptor::AudioContentsTD, &DescriptorAction::OpenRead);
         self.change_descriptor_state(&Descriptor::DiscTitleTD, &DescriptorAction::OpenRead);
 
-        let mut done: u16 = 0;
-        let mut remaining: u16 = 0;
+        let mut done: i32 = 0;
+        let mut remaining: i32 = 0;
         let mut total = 1;
         let mut result: Vec<String> = Vec::new();
-        let mut chunksize = 0;
-        let mut chunk = String::new();
+        let mut chunksize;
+        let mut chunk;
 
         while done < total {
             let wchar_value = match wchar {
@@ -763,15 +763,17 @@ impl NetMDInterface {
             let reply = self.send_query(&mut query, false, false)?;
 
             if remaining == 0 {
-                let res = chunksize = u16::from_le_bytes([reply[13], reply[14]]);
-                total = u16::from_le_bytes([reply[22], reply[23]]);
+                let res = scan_query(reply, "1806 02201801 00%? 3000 0a00 1000 %w0000 %?%?000a %w %*".to_string())?;
 
-                chunk = SHIFT_JIS.decode(&reply[25..]).0.into();
+                chunksize = res[0].to_i64().unwrap() as i32;
+                total = res[1].to_i64().unwrap() as i32;
+                chunk = SHIFT_JIS.decode(&res[2].to_vec().unwrap()).0.into();
 
                 chunksize -= 6;
             } else {
-                chunksize = u16::from_le_bytes([reply[13], reply[14]]);
-                chunk = SHIFT_JIS.decode(&reply[18..]).0.into();
+                let res = scan_query(reply, "1806 02201801 00%? 3000 0a00 1000 %w%?%? %*".to_string())?;
+                chunksize = res[0].to_i64().unwrap() as i32;
+                chunk = SHIFT_JIS.decode(&res[1].to_vec().unwrap()).0.into();
             }
 
             result.push(chunk);
@@ -779,12 +781,12 @@ impl NetMDInterface {
             remaining = total - done;
         }
 
-        let final_result = result.join("");
+        let res = result.join("");
 
         self.change_descriptor_state(&Descriptor::DiscTitleTD, &DescriptorAction::Close);
         self.change_descriptor_state(&Descriptor::AudioContentsTD, &DescriptorAction::Close);
 
-        Ok(final_result)
+        Ok(res)
     }
 
     pub fn disc_title(&self, wchar: bool) -> Result<String, Box<dyn Error>> {
@@ -844,7 +846,7 @@ impl NetMDInterface {
 
             let group_name = &group[track_range.len() + 1..];
 
-            let full_width_range = utils::half_width_to_full_width_range(&track_range);
+            let full_width_range = half_width_to_full_width_range(&track_range);
 
             let full_width_group_name = full_width_group_list
                 .find(|n| n.starts_with(&full_width_range))
@@ -935,5 +937,26 @@ impl NetMDInterface {
             .decode(&res[0].to_vec().unwrap())
             .0
             .into())
+    }
+
+    pub fn set_disc_title(&self, title: String, wchar: bool) -> Result<(), Box<dyn Error>> {
+        let current_title = self._disc_title(wchar)?;
+        if current_title == title {
+            return Ok(())
+        }
+
+        let old_len = length_after_encoding_to_jis(current_title);
+        let new_len = length_after_encoding_to_jis(title);
+
+        let wchar_value = match wchar {
+            true => {
+
+            },
+            false => {
+
+            }
+        };
+
+        Ok(())
     }
 }

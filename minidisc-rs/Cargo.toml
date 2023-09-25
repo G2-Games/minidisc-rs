@@ -1,5 +1,5 @@
 [package]
-name = "minidisc"
+name = "minidisc-rs"
 version = "0.0.1"
 homepage = "https://github.com/G2-Games/minidisc-cli/"
 repository = "https://github.com/G2-Games/minidisc-cli/minidisc-rs/"

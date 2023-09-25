@@ -11,6 +11,6 @@ license = "AGPL-3.0"
 [dependencies]
 rusb = "0.9.3"
 
-[dependencies.minidisc]
+[dependencies.minidisc-rs]
 path = "minidisc-rs"
 version = "0.0.1"

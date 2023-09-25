@@ -1,13 +1,14 @@
 use std::collections::hash_map::HashMap;
+use encoding_rs::SHIFT_JIS;
 use std::error::Error;
 
-pub fn bcd_to_int(bcd: i32) -> i32 {
-    let mut original = bcd;
+pub fn bcd_to_int(mut bcd: i32) -> i32 {
     let mut value = 0;
     let mut nibble = 0;
-    while original != 0 {
-        let nibble_value = original & 0xf;
-        original = original >> 4;
+
+    while bcd != 0 {
+        let nibble_value = bcd & 0xf;
+        bcd = bcd >> 4;
         value += nibble_value * i32::pow(10, nibble);
         nibble += 1;
     }
@@ -27,33 +28,6 @@ pub fn int_to_bcd(mut value: i32) -> i32 {
     }
 
     bcd
-}
-
-pub fn int_from_bcd(byte: u8) -> Result<u8, Box<dyn Error>> {
-    let upper = (byte & 0xF0) >> 4;
-    let lower = byte & 0x0F;
-
-    if upper >= 10 {
-        return Err("Upper nybble out of range [0..9]".into());
-    }
-
-    if lower >= 10 {
-        return Err("Lower nybble out of range [0..9]".into());
-    }
-
-    Ok(upper * 10 + lower)
-}
-
-pub fn bcd_from_int(byte: u8) -> Result<u8, Box<dyn Error>> {
-    let mut new_byte: u8 = 0;
-
-    let upper = (byte / 10) << 4;
-    let lower = byte % 10;
-
-    new_byte |= upper;
-    new_byte |= lower;
-
-    Ok(new_byte)
 }
 
 pub fn half_width_to_full_width_range(range: &String) -> String {
@@ -92,4 +66,10 @@ pub fn get_bytes<const S: usize>(
     }
 
     Ok(bytes)
+}
+
+pub fn length_after_encoding_to_jis(string: String) -> usize {
+    let new_string = SHIFT_JIS.encode(&string);
+
+    new_string.0.len()
 }

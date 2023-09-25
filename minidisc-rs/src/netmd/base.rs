@@ -127,18 +127,18 @@ impl NetMD {
     }
 
     /// Gets the device name from the struct
-    pub fn device_name(&self) -> Option<String> {
-        self.model.name.clone()
+    pub fn device_name(&self) -> &Option<String> {
+        &self.model.name
     }
 
     /// Gets the vendor id from the struct
-    pub fn vendor_id(&self) -> u16 {
-        self.model.vendor_id.clone()
+    pub fn vendor_id(&self) -> &u16 {
+        &self.model.vendor_id
     }
 
     /// Gets the product id from the struct
-    pub fn product_id(&self) -> u16 {
-        self.model.product_id.clone()
+    pub fn product_id(&self) -> &u16 {
+        &self.model.product_id
     }
 
     /// Poll the device to get either the result

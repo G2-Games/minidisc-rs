@@ -1,4 +1,4 @@
-use minidisc::netmd;
+use minidisc_rs::netmd::interface;
 use rusb;
 
 fn main() {
@@ -19,19 +19,17 @@ fn main() {
             new_device.read_product_string_ascii(&device_desc)
         );
 
-        let player_controller = match netmd::interface::NetMDInterface::new(new_device, device_desc) {
+        let player_controller = match interface::NetMDInterface::new(new_device, device_desc) {
             Ok(player) => player,
             Err(_) => continue
         };
 
         println!(
             "Player Model: {}",
-            player_controller.net_md_device.device_name().unwrap()
+            player_controller.net_md_device.device_name().clone().unwrap()
         );
-
-        println!("Disc Flags?  {:?}", player_controller.disc_flags());
-        println!("Track Count: {:?}", player_controller.track_count());
-        println!("Disc Title:  {:?}", player_controller.disc_title(false));
+        println!("Track Count: {:?}", player_controller.track_count().unwrap());
+        println!("Disc Title:  {} | {}", player_controller.disc_title(false).unwrap(),  player_controller.disc_title(true).unwrap());
 
         //println!("TEST CASE:   {:?}", player_controller.disc_subunit_identifier());
 

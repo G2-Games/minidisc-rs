@@ -5,4 +5,4 @@
 /// This is a test
 pub mod netmd;
 
-use netmd::interface;
+use netmd::interface::NetMDInterface;
