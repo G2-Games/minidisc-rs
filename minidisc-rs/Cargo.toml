@@ -1,8 +1,12 @@
 [package]
-name = "minidisc-rs"
+name = "minidisc"
 version = "0.0.1"
+homepage = "https://github.com/G2-Games/minidisc-cli/"
+repository = "https://github.com/G2-Games/minidisc-cli/minidisc-rs/"
+descripton = "An interface in rust to control NetMD and Hi-MD minidisc devices."
 authors = ["G2 <g2@g2games.dev>"]
 edition = "2021"
+readme = "README.md"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
