@@ -163,7 +163,6 @@ pub fn scan_query(
     input_stack.next();
 
     for character in format.chars() {
-        println!("{}", character);
         if escaped {
             if endianness_override.is_none() && ['<', '>'].contains(&character) {
                 endianness_override = Some(character);
@@ -178,7 +177,6 @@ pub fn scan_query(
 
             match character {
                 character if FORMAT_TYPE_LEN_DICT.contains_key(&character) => {
-                    println!("Character: {}", character);
                     match character {
                         'b' => {
                             let new_value =

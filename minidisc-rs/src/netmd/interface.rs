@@ -5,8 +5,6 @@ use encoding_rs::*;
 use std::collections::HashMap;
 use std::error::Error;
 
-use super::utils::half_width_to_full_width_range;
-
 #[derive(Copy, Clone)]
 enum Action {
     Play = 0x75,
@@ -173,10 +171,12 @@ struct MediaInfo {
     supports_md_clip: u8,
 }
 
+/// An interface for interacting with a NetMD device
 pub struct NetMDInterface {
     pub net_md_device: NetMD,
 }
 
+#[allow(dead_code)]
 impl NetMDInterface {
     const MAX_INTERIM_READ_ATTEMPTS: u8 = 4;
     const INTERIM_RESPONSE_RETRY_INTERVAL: u32 = 100;

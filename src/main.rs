@@ -1,10 +1,5 @@
-mod netmd;
-
-use crate::netmd::base::NetMD;
-use crate::netmd::interface::NetMDInterface;
-
-use std::thread;
-use std::time::Duration;
+use minidisc_rs::netmd::{base, interface};
+use rusb;
 
 fn main() {
     for device in rusb::devices().unwrap().iter() {
@@ -24,8 +19,8 @@ fn main() {
             new_device.read_product_string_ascii(&device_desc)
         );
 
-        let player = NetMD::new(new_device, device_desc).unwrap();
-        let player_controller = NetMDInterface::new(player);
+        let player = base::NetMD::new(new_device, device_desc).unwrap();
+        let player_controller = interface::NetMDInterface::new(player);
 
         println!(
             "Player Model: {}",
@@ -49,19 +44,5 @@ fn main() {
                 player_controller.track_title(i as u16, true).unwrap()
             );
         }*/
-
-        /*
-        let mut request: [u8; 19] = [0x00, 0x18, 0x06, 0x02, 0x20, 0x18,
-                                     0x01, 0x00, 0x00, 0x30, 0x00, 0xa,
-                                     0x00, 0xff, 0x00, 0x00, 0x00, 0x00,
-                                     0x00];
-        request[4] = 0x75;
-        let test_result = player.send_command(&request);
-
-        match test_result {
-            Ok(_) => println!("Successfully sent command! Response: {:?}", test_result),
-            Err(error) => println!("Command failed! Error: {}", error)
-        }
-        */
     }
 }
