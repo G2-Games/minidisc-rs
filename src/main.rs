@@ -36,6 +36,11 @@ fn main() {
         println!("Track Count: {:?}", player_controller.track_count());
         println!("Disc Title:  {:?}", player_controller.disc_title(false));
 
+        println!("TEST CASE:   {:?}", player_controller.operating_status());
+
+        let _ = player_controller.play();
+
+        /*
         for i in 0..player_controller.track_count().unwrap() {
             println!(
                 "Track {: >2}: {: >21} | {}",
@@ -43,7 +48,7 @@ fn main() {
                 player_controller.track_title(i as u16, false).unwrap(),
                 player_controller.track_title(i as u16, true).unwrap()
             );
-        }
+        }*/
 
         /*
         let mut request: [u8; 19] = [0x00, 0x18, 0x06, 0x02, 0x20, 0x18,
