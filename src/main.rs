@@ -1,4 +1,4 @@
-use minidisc_rs::netmd;
+use minidisc::netmd;
 use rusb;
 
 fn main() {
