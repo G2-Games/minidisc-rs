@@ -162,6 +162,8 @@ pub fn scan_query(
     // TODO: Find out what this is
     input_stack.next();
 
+    let mut bloop = 0;
+
     for character in format.chars() {
         if escaped {
             if endianness_override.is_none() && ['<', '>'].contains(&character) {
@@ -214,11 +216,13 @@ pub fn scan_query(
                     result.push(QueryResults::Array(result_buffer))
                 }
                 character if character == '*' || character == '#' => {
-                    let mut result_buffer: Vec<i64> = Vec::new();
+                    let mut result_buffer: Vec<u8> = Vec::new();
                     let temp_stack = input_stack.clone();
                     for entry in temp_stack.take(initial_length as usize) {
-                        result_buffer.push(entry as i64);
+                        result_buffer.push(entry);
+                        input_stack.next();
                     }
+                    result.push(QueryResults::Array(result_buffer));
                 }
                 character if character == 'B' => {
                     let v = input_stack.next().unwrap();

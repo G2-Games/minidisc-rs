@@ -1,9 +1,10 @@
 use crate::netmd::query_utils::{format_query, scan_query};
 use crate::netmd::utils;
-use crate::NetMD;
+use crate::netmd::base;
 use encoding_rs::*;
 use std::collections::HashMap;
 use std::error::Error;
+use rusb;
 
 #[derive(Copy, Clone)]
 enum Action {
@@ -173,7 +174,7 @@ struct MediaInfo {
 
 /// An interface for interacting with a NetMD device
 pub struct NetMDInterface {
-    pub net_md_device: NetMD,
+    pub net_md_device: base::NetMD,
 }
 
 #[allow(dead_code)]
@@ -181,17 +182,19 @@ impl NetMDInterface {
     const MAX_INTERIM_READ_ATTEMPTS: u8 = 4;
     const INTERIM_RESPONSE_RETRY_INTERVAL: u32 = 100;
 
-    pub fn new(net_md_device: NetMD) -> Self {
+    pub fn new(device: rusb::DeviceHandle<rusb::GlobalContext>, descriptor: rusb::DeviceDescriptor) -> Self {
+        let net_md_device = base::NetMD::new(device, descriptor).unwrap();
         NetMDInterface { net_md_device }
     }
 
     fn construct_multibyte(&self, buffer: &Vec<u8>, n: u8, offset: &mut usize) -> u32 {
-        let mut bytes = [0u8; 4];
+        let mut output: u32 = 0;
         for i in 0..n as usize {
-            bytes[i] = buffer[*offset];
+            output <<= 8;
+            output |= buffer[*offset] as u32;
             *offset += 1;
         }
-        u32::from_le_bytes(bytes)
+        output
     }
 
     // TODO: Finish proper implementation
@@ -201,43 +204,46 @@ impl NetMDInterface {
             &DescriptorAction::OpenRead,
         );
 
-        let mut query = vec![0x18, 0x09, 0x00, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00];
+        let mut query = format_query(
+            "1809 00 ff00 0000 0000".to_string(),
+            vec![],
+            vec![],
+        )?;
 
         let reply = self.send_query(&mut query, false, false)?;
 
-        let descriptor_length = reply[11];
-        let generation_id = reply[12];
-        let size_of_list_id = reply[13];
-        let size_of_object_id = reply[14];
-        let size_of_object_position = reply[15];
-        let amt_of_root_object_lists = reply[17];
-        let buffer = reply[18..].to_vec();
-        let mut root_objects: Vec<u32> = Vec::new();
+        let res = scan_query(reply, "1809 00 1000 %?%? %?%? %w %b %b %b %b %w %*".to_string())?;
 
-        println!("{}", buffer.len());
+        let _descriptor_length = res[0].to_i64().unwrap();
+        let _generation_id = res[1].to_i64().unwrap();
+        let size_of_list_id = res[2].to_i64().unwrap();
+        let _size_of_object_id = res[3].to_i64().unwrap();
+        let _size_of_object_position = res[4].to_i64().unwrap();
+        let amt_of_root_object_lists = res[5].to_i64().unwrap();
+        let buffer = res[6].to_vec().unwrap();
+        let mut root_objects: Vec<u32> = Vec::new();
 
         let mut buffer_offset: usize = 0;
 
         for _ in 0..amt_of_root_object_lists {
             root_objects.push(self.construct_multibyte(
                 &buffer,
-                size_of_list_id,
+                size_of_list_id as u8,
                 &mut buffer_offset,
             ));
         }
-        println!("{:?}", root_objects);
 
-        let subunit_dependent_length = self.construct_multibyte(&buffer, 2, &mut buffer_offset);
-        let subunit_fields_length = self.construct_multibyte(&buffer, 2, &mut buffer_offset);
-        let attributes = buffer[buffer_offset];
+        let _subunit_dependent_length = self.construct_multibyte(&buffer, 2, &mut buffer_offset);
+        let _subunit_fields_length = self.construct_multibyte(&buffer, 2, &mut buffer_offset);
+        let _attributes = buffer[buffer_offset];
         buffer_offset += 1;
-        let disc_subunit_version = buffer[buffer_offset];
+        let _disc_subunit_version = buffer[buffer_offset];
         buffer_offset += 1;
 
         let mut supported_media_type_specifications: Vec<MediaInfo> = Vec::new();
         let amt_supported_media_types = buffer[buffer_offset];
         buffer_offset += 1;
-        for i in 0..amt_supported_media_types {
+        for _ in 0..amt_supported_media_types {
             let supported_media_type = self.construct_multibyte(&buffer, 2, &mut buffer_offset);
 
             let implementation_profile_id = buffer[buffer_offset];
@@ -245,7 +251,7 @@ impl NetMDInterface {
             let media_type_attributes = buffer[buffer_offset];
             buffer_offset += 1;
 
-            let type_dep_length = self.construct_multibyte(&buffer, 2, &mut buffer_offset);
+            let _type_dep_length = self.construct_multibyte(&buffer, 2, &mut buffer_offset);
 
             let md_audio_version = buffer[buffer_offset];
             buffer_offset += 1;
@@ -261,10 +267,8 @@ impl NetMDInterface {
             })
         }
 
-        /* TODO: Fix this later
         let manufacturer_dep_length = self.construct_multibyte(&buffer, 2, &mut buffer_offset);
-        let manufacturer_dep_data = &buffer[buffer_offset..buffer_offset + manufacturer_dep_length as usize];
-        */
+        let _manufacturer_dep_data = &buffer[buffer_offset..buffer_offset + manufacturer_dep_length as usize];
 
         self.change_descriptor_state(&Descriptor::DiscSubunitIdentifier, &DescriptorAction::Close);
 
@@ -297,7 +301,11 @@ impl NetMDInterface {
     }
 
     fn change_descriptor_state(&self, descriptor: &Descriptor, action: &DescriptorAction) {
-        let mut query = vec![0x18, 0x08];
+        let mut query = format_query(
+            "1808".to_string(),
+            vec![],
+            vec![],
+        ).unwrap();
 
         query.append(&mut descriptor.get_array());
 
@@ -378,11 +386,15 @@ impl NetMDInterface {
     }
 
     fn playback_control(&self, action: Action) -> Result<(), Box<dyn Error>> {
-        let mut query = vec![0x18, 0xc3, 0xff, 0x00, 0x00, 0x00, 0x00];
+        let mut query = format_query(
+            "18c3 00 %b 000000".to_string(),
+            vec![Some(action as i64)],
+            vec![],
+        )?;
 
-        query[3] = action as u8;
+        let reply = self.send_query(&mut query, false, false)?;
 
-        let result = self.send_query(&mut query, false, false)?;
+        scan_query(reply, "18c3 00 %b 000000".to_string())?;
 
         Ok(())
     }
@@ -403,50 +415,69 @@ impl NetMDInterface {
         self.playback_control(Action::Pause)
     }
 
+    //TODO: Implement fix for LAM-1
     pub fn stop(&self) -> Result<(), Box<dyn Error>> {
-        let mut query = vec![0x18, 0xc5, 0xff, 0x00, 0x00, 0x00, 0x00];
+        let mut query = format_query(
+            "18c5 ff 00000000".to_string(),
+            vec![],
+            vec![],
+        )?;
 
-        let result = self.send_query(&mut query, false, false)?;
+        let reply = self.send_query(&mut query, false, false)?;
+
+        scan_query(reply, "18c5 00 00000000".to_string())?;
 
         Ok(())
     }
 
     fn acquire(&self) -> Result<(), Box<dyn Error>> {
-        let mut query = vec![
-            0xff, 0x01, 0x0c, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
-            0xff,
-        ];
+        let mut query = format_query(
+            "ff 010c ffff ffff ffff ffff ffff ffff".to_string(),
+            vec![],
+            vec![],
+        )?;
         let reply = self.send_query(&mut query, false, false)?;
+
+        scan_query(reply, "ff 010c ffff ffff ffff ffff ffff ffff".to_string())?;
 
         Ok(())
     }
 
     fn release(&self) -> Result<(), Box<dyn Error>> {
-        let mut query = vec![
-            0xff, 0x01, 0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
-            0xff,
-        ];
+        let mut query = format_query(
+            "ff 0100 ffff ffff ffff ffff ffff ffff".to_string(),
+            vec![],
+            vec![],
+        )?;
+
         let reply = self.send_query(&mut query, false, false)?;
+
+        scan_query(reply, "ff 0100 ffff ffff ffff ffff ffff ffff".to_string())?;
 
         Ok(())
     }
 
-    fn status(&self) -> Result<Vec<u8>, Box<dyn Error>> {
+    pub fn status(&self) -> Result<Vec<u8>, Box<dyn Error>> {
         self.change_descriptor_state(
             &Descriptor::OperatingStatusBlock,
             &DescriptorAction::OpenRead,
         );
-        let mut query = vec![
-            0x18, 0x09, 0x80, 0x01, 0x02, 0x30, 0x88, 0x00, 0x00, 0x30, 0x88, 0x04, 0x00, 0xff,
-            0x00, 0x00, 0x00, 0x00, 0x00,
-        ];
-        let response = self.send_query(&mut query, false, false)?;
 
-        let res = response[22..].to_vec();
+        let mut query = format_query(
+            "1809 8001 0230 8800 0030 8804 00 ff00 00000000".to_string(),
+            vec![],
+            vec![],
+        )?;
+
+        let reply = self.send_query(&mut query, false, false)?;
+
+        let res = scan_query(reply, "1809 8001 0230 8800 0030 8804 00 1000 00090000 %x".to_string())?;
 
         self.change_descriptor_state(&Descriptor::OperatingStatusBlock, &DescriptorAction::Close);
 
-        Ok(res)
+        let final_array = res[0].to_vec().unwrap();
+
+        Ok(final_array)
     }
 
     pub fn disc_present(&self) -> Result<bool, Box<dyn Error>> {
