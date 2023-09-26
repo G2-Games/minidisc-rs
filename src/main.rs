@@ -1,4 +1,4 @@
-use std::thread::sleep_ms;
+use std::thread::sleep;
 
 use minidisc_rs::netmd::interface;
 use rusb;
@@ -32,12 +32,11 @@ fn main() {
         );
         println!("Track Count: {:?}", player_controller.track_count().unwrap());
 
-        println!("TEST CASE:   {:?}", player_controller.set_disc_title("latvia　ﾊﾊﾊ!はいはいです".to_string(), false));
-        println!("TEST CASE:   {:?}", player_controller.set_disc_title("latvia　ﾊﾊﾊ!はいはいです".to_string(), true));
-        std::thread::sleep(std::time::Duration::from_secs(2));
+        //println!("TEST CASE:   {:?}", player_controller);
+        sleep(std::time::Duration::from_secs(2));
         println!(
-            "Disc Title:  {} | {}",
-            player_controller.disc_title(false).unwrap(),
+            "Disc Title:  {: >18} | {}\n-----------------------------------------------------------------",
+            player_controller.disc_title(false).unwrap().split_at(18).0,
             player_controller.disc_title(true).unwrap()
         );
 
