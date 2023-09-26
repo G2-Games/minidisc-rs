@@ -25,11 +25,31 @@ const FORMAT_TYPE_LEN_DICT: Lazy<HashMap<char, i32>> = Lazy::new(|| {
 
 const DEBUG: bool = false;
 
+pub enum QueryValue {
+    Number(i64),
+    Array(Vec<u8>),
+}
+
+impl QueryValue {
+    pub fn to_vec(&self) -> Result<Vec<u8>, Box<dyn Error>> {
+        match self {
+            QueryValue::Array(a) => Ok(a.to_vec()),
+            _ => Err("QueryValue type mismatch! Expected Vec<u8>, got i64".into()),
+        }
+    }
+
+    pub fn to_i64(&self) -> Result<i64, Box<dyn Error>> {
+        match self {
+            QueryValue::Number(a) => Ok(*a),
+            _ => Err("QueryValue type mismatch! Expected i64, got Vec<u8>".into()),
+        }
+    }
+}
+
 /// Formats a query using a standard input to send to the player
 pub fn format_query(
     format: String,
-    args: Vec<Option<i64>>,
-    array_args: Vec<Vec<u8>>,
+    args: Vec<QueryValue>,
 ) -> Result<Vec<u8>, Box<dyn Error>> {
     if DEBUG {
         println!("SENT>>> F: {}", format);
@@ -38,7 +58,6 @@ pub fn format_query(
     let mut result: Vec<u8> = Vec::new();
     let mut half: Option<char> = None;
     let mut arg_stack = args.into_iter();
-    let mut array_arg_stack = array_args.into_iter();
     let mut endianness_override: Option<char> = None;
 
     let mut escaped = false;
@@ -49,10 +68,10 @@ pub fn format_query(
                 continue;
             }
             escaped = false;
-            let value = arg_stack.next().unwrap().unwrap();
 
             match character {
                 character if FORMAT_TYPE_LEN_DICT.contains_key(&character) => {
+                    let value = arg_stack.next().unwrap().to_i64().unwrap();
                     match character {
                         'b' => result.push(value as u8),
                         'w' => {
@@ -72,7 +91,7 @@ pub fn format_query(
                     endianness_override = None;
                 }
                 character if character == 'x' || character == 's' || character == 'z' => {
-                    let mut array_value = array_arg_stack.next().unwrap();
+                    let mut array_value = arg_stack.next().unwrap().to_vec().unwrap();
 
                     let mut array_length = array_value.len();
 
@@ -90,10 +109,11 @@ pub fn format_query(
                     }
                 }
                 character if character == '*' => {
-                    let mut array_value = array_arg_stack.next().unwrap();
+                    let mut array_value = arg_stack.next().unwrap().to_vec().unwrap();
                     result.append(&mut array_value);
                 }
                 character if character == 'B' || character == 'W' => {
+                    let value = arg_stack.next().unwrap().to_i64().unwrap();
                     let converted = utils::int_to_bcd(value as i32);
                     if character == 'W' {
                         result.push(((converted >> 8) & 0xFF) as u8);
@@ -124,33 +144,12 @@ pub fn format_query(
     Ok(result)
 }
 
-pub enum QueryResults {
-    Number(i64),
-    Array(Vec<u8>),
-}
-
-impl QueryResults {
-    pub fn to_vec(&self) -> Result<Vec<u8>, Box<dyn Error>> {
-        match self {
-            QueryResults::Array(a) => Ok(a.to_vec()),
-            _ => Err("Result was a number".into()),
-        }
-    }
-
-    pub fn to_i64(&self) -> Result<i64, Box<dyn Error>> {
-        match self {
-            QueryResults::Number(a) => Ok(*a),
-            _ => Err("Result was a number".into()),
-        }
-    }
-}
-
 /// Scans a result using a standard input to recieve from the player
 pub fn scan_query(
     query_result: Vec<u8>,
     format: String,
-) -> Result<Vec<QueryResults>, Box<dyn Error>> {
-    let mut result: Vec<QueryResults> = Vec::new();
+) -> Result<Vec<QueryValue>, Box<dyn Error>> {
+    let mut result: Vec<QueryValue> = Vec::new();
 
     let initial_length = query_result.len();
     let mut input_stack = query_result.into_iter();
@@ -161,8 +160,6 @@ pub fn scan_query(
     // Remove an unknown byte at the beginning
     // TODO: Find out what this is
     input_stack.next();
-
-    let mut bloop = 0;
 
     for character in format.chars() {
         if escaped {
@@ -183,22 +180,22 @@ pub fn scan_query(
                         'b' => {
                             let new_value =
                                 u8::from_be_bytes(utils::get_bytes(&mut input_stack).unwrap());
-                            result.push(QueryResults::Number(new_value as i64));
+                            result.push(QueryValue::Number(new_value as i64));
                         }
                         'w' => {
                             let new_value =
                                 i16::from_be_bytes(utils::get_bytes(&mut input_stack).unwrap());
-                            result.push(QueryResults::Number(new_value as i64));
+                            result.push(QueryValue::Number(new_value as i64));
                         }
                         'd' => {
                             let new_value =
                                 i32::from_be_bytes(utils::get_bytes(&mut input_stack).unwrap());
-                            result.push(QueryResults::Number(new_value as i64));
+                            result.push(QueryValue::Number(new_value as i64));
                         }
                         'q' => {
                             let new_value =
                                 i64::from_be_bytes(utils::get_bytes(&mut input_stack).unwrap());
-                            result.push(QueryResults::Number(new_value));
+                            result.push(QueryValue::Number(new_value));
                         }
                         _ => unreachable!(),
                     };
@@ -213,7 +210,7 @@ pub fn scan_query(
                     for _ in 0..length {
                         result_buffer.push(input_stack.next().unwrap());
                     }
-                    result.push(QueryResults::Array(result_buffer))
+                    result.push(QueryValue::Array(result_buffer))
                 }
                 character if character == '*' || character == '#' => {
                     let mut result_buffer: Vec<u8> = Vec::new();
@@ -222,16 +219,16 @@ pub fn scan_query(
                         result_buffer.push(entry);
                         input_stack.next();
                     }
-                    result.push(QueryResults::Array(result_buffer));
+                    result.push(QueryValue::Array(result_buffer));
                 }
                 character if character == 'B' => {
                     let v = input_stack.next().unwrap();
-                    result.push(QueryResults::Number(utils::bcd_to_int(v as i32) as i64));
+                    result.push(QueryValue::Number(utils::bcd_to_int(v as i32) as i64));
                 }
                 character if character == 'W' => {
                     let v = (input_stack.next().unwrap() as i32) << 8
                         | input_stack.next().unwrap() as i32;
-                    result.push(QueryResults::Number(utils::bcd_to_int(v) as i64));
+                    result.push(QueryValue::Number(utils::bcd_to_int(v) as i64));
                 }
                 _ => return Err(format!("Unrecognized format char {}", character).into()),
             }

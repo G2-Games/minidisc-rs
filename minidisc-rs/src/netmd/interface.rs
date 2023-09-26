@@ -1,10 +1,12 @@
-use crate::netmd::query_utils::{format_query, scan_query};
-use crate::netmd::utils::{length_after_encoding_to_jis, half_width_to_full_width_range};
 use crate::netmd::base;
+use crate::netmd::query_utils::{format_query, scan_query, QueryValue};
+use crate::netmd::utils::{
+    half_width_to_full_width_range, length_after_encoding_to_jis, sanitize_full_width_title,
+};
 use encoding_rs::*;
+use rusb;
 use std::collections::HashMap;
 use std::error::Error;
-use rusb;
 
 #[derive(Copy, Clone)]
 enum Action {
@@ -182,7 +184,10 @@ impl NetMDInterface {
     const MAX_INTERIM_READ_ATTEMPTS: u8 = 4;
     const INTERIM_RESPONSE_RETRY_INTERVAL: u32 = 100;
 
-    pub fn new(device: rusb::DeviceHandle<rusb::GlobalContext>, descriptor: rusb::DeviceDescriptor) -> Result<Self, Box<dyn Error>> {
+    pub fn new(
+        device: rusb::DeviceHandle<rusb::GlobalContext>,
+        descriptor: rusb::DeviceDescriptor,
+    ) -> Result<Self, Box<dyn Error>> {
         let net_md_device = base::NetMD::new(device, descriptor).unwrap();
         Ok(NetMDInterface { net_md_device })
     }
@@ -204,15 +209,14 @@ impl NetMDInterface {
             &DescriptorAction::OpenRead,
         );
 
-        let mut query = format_query(
-            "1809 00 ff00 0000 0000".to_string(),
-            vec![],
-            vec![],
-        )?;
+        let mut query = format_query("1809 00 ff00 0000 0000".to_string(), vec![])?;
 
         let reply = self.send_query(&mut query, false, false)?;
 
-        let res = scan_query(reply, "1809 00 1000 %?%? %?%? %w %b %b %b %b %w %*".to_string())?;
+        let res = scan_query(
+            reply,
+            "1809 00 1000 %?%? %?%? %w %b %b %b %b %w %*".to_string(),
+        )?;
 
         let _descriptor_length = res[0].to_i64().unwrap();
         let _generation_id = res[1].to_i64().unwrap();
@@ -268,7 +272,8 @@ impl NetMDInterface {
         }
 
         let manufacturer_dep_length = self.construct_multibyte(&buffer, 2, &mut buffer_offset);
-        let _manufacturer_dep_data = &buffer[buffer_offset..buffer_offset + manufacturer_dep_length as usize];
+        let _manufacturer_dep_data =
+            &buffer[buffer_offset..buffer_offset + manufacturer_dep_length as usize];
 
         self.change_descriptor_state(&Descriptor::DiscSubunitIdentifier, &DescriptorAction::Close);
 
@@ -301,11 +306,7 @@ impl NetMDInterface {
     }
 
     fn change_descriptor_state(&self, descriptor: &Descriptor, action: &DescriptorAction) {
-        let mut query = format_query(
-            "1808".to_string(),
-            vec![],
-            vec![],
-        ).unwrap();
+        let mut query = format_query("1808".to_string(), vec![]).unwrap();
 
         query.append(&mut descriptor.get_array());
 
@@ -388,8 +389,7 @@ impl NetMDInterface {
     fn playback_control(&self, action: Action) -> Result<(), Box<dyn Error>> {
         let mut query = format_query(
             "18c3 00 %b 000000".to_string(),
-            vec![Some(action as i64)],
-            vec![],
+            vec![QueryValue::Number(action as i64)],
         )?;
 
         let reply = self.send_query(&mut query, false, false)?;
@@ -417,11 +417,7 @@ impl NetMDInterface {
 
     //TODO: Implement fix for LAM-1
     pub fn stop(&self) -> Result<(), Box<dyn Error>> {
-        let mut query = format_query(
-            "18c5 ff 00000000".to_string(),
-            vec![],
-            vec![],
-        )?;
+        let mut query = format_query("18c5 ff 00000000".to_string(), vec![])?;
 
         let reply = self.send_query(&mut query, false, false)?;
 
@@ -434,7 +430,6 @@ impl NetMDInterface {
         let mut query = format_query(
             "ff 010c ffff ffff ffff ffff ffff ffff".to_string(),
             vec![],
-            vec![],
         )?;
         let reply = self.send_query(&mut query, false, false)?;
 
@@ -446,7 +441,6 @@ impl NetMDInterface {
     fn release(&self) -> Result<(), Box<dyn Error>> {
         let mut query = format_query(
             "ff 0100 ffff ffff ffff ffff ffff ffff".to_string(),
-            vec![],
             vec![],
         )?;
 
@@ -466,12 +460,14 @@ impl NetMDInterface {
         let mut query = format_query(
             "1809 8001 0230 8800 0030 8804 00 ff00 00000000".to_string(),
             vec![],
-            vec![],
         )?;
 
         let reply = self.send_query(&mut query, false, false)?;
 
-        let res = scan_query(reply, "1809 8001 0230 8800 0030 8804 00 1000 00090000 %x".to_string())?;
+        let res = scan_query(
+            reply,
+            "1809 8001 0230 8800 0030 8804 00 1000 00090000 %x".to_string(),
+        )?;
 
         self.change_descriptor_state(&Descriptor::OperatingStatusBlock, &DescriptorAction::Close);
 
@@ -496,7 +492,6 @@ impl NetMDInterface {
         );
         let mut query = format_query(
             "1809 8001 0330 8802 0030 8805 0030 8806 00 ff00 00000000".to_string(),
-            vec![],
             vec![],
         )
         .unwrap();
@@ -535,8 +530,7 @@ impl NetMDInterface {
         );
         let mut query = format_query(
             "1809 8001 0330 %w 0030 8805 0030 %w 00 ff00 00000000".to_string(),
-            vec![Some(p1 as i64), Some(p2 as i64)],
-            vec![],
+            vec![QueryValue::Number(p1 as i64), QueryValue::Number(p2 as i64)],
         )
         .unwrap();
 
@@ -569,7 +563,6 @@ impl NetMDInterface {
         let mut query = format_query(
             "1809 8001 0430 8802 0030 8805 0030 0003 0030 0002 00 ff00 00000000".to_string(),
             vec![],
-            vec![],
         )
         .unwrap();
 
@@ -595,14 +588,14 @@ impl NetMDInterface {
     }
 
     pub fn eject_disc(&self) -> Result<(), Box<dyn Error>> {
-        let mut query = format_query("18c1 ff 6000".to_string(), vec![], vec![]).unwrap();
+        let mut query = format_query("18c1 ff 6000".to_string(), vec![]).unwrap();
 
         let _reply = self.send_query(&mut query, false, false)?;
         Ok(())
     }
 
     pub fn can_eject_disc(&self) -> Result<bool, Box<dyn Error>> {
-        let mut query = format_query("18c1 ff 6000".to_string(), vec![], vec![]).unwrap();
+        let mut query = format_query("18c1 ff 6000".to_string(), vec![]).unwrap();
 
         match self.send_query(&mut query, true, false) {
             Ok(_) => Ok(true),
@@ -614,8 +607,7 @@ impl NetMDInterface {
     pub fn go_to_track(&self, track_number: u16) -> Result<u16, Box<dyn Error>> {
         let mut query = format_query(
             "1850 ff010000 0000 %w".to_string(),
-            vec![Some(track_number as i64)],
-            vec![],
+            vec![QueryValue::Number(track_number as i64)],
         )
         .unwrap();
 
@@ -639,13 +631,12 @@ impl NetMDInterface {
         let mut query = format_query(
             "1850 ff000000 0000 %w %B%B%B%B".to_string(),
             vec![
-                Some(track_number as i64),
-                Some(hour as i64),
-                Some(minute as i64),
-                Some(second as i64),
-                Some(frame as i64),
+                QueryValue::Number(track_number as i64),
+                QueryValue::Number(hour as i64),
+                QueryValue::Number(minute as i64),
+                QueryValue::Number(second as i64),
+                QueryValue::Number(frame as i64),
             ],
-            vec![],
         )
         .unwrap();
 
@@ -661,8 +652,7 @@ impl NetMDInterface {
     fn _track_change(&self, direction: Track) -> Result<(), Box<dyn Error>> {
         let mut query = format_query(
             "1850 ff10 00000000 %w".to_string(),
-            vec![Some(direction as i64)],
-            vec![],
+            vec![QueryValue::Number(direction as i64)],
         )
         .unwrap();
 
@@ -687,7 +677,7 @@ impl NetMDInterface {
 
     /* Content access and control */
     pub fn erase_disc(&self) -> Result<(), Box<dyn Error>> {
-        let mut query = format_query("1840 ff 0000".to_string(), vec![], vec![]).unwrap();
+        let mut query = format_query("1840 ff 0000".to_string(), vec![]).unwrap();
         let reply = self.send_query(&mut query, false, false)?;
         scan_query(reply, "1840 00 0000".to_string())?;
         Ok(())
@@ -698,7 +688,7 @@ impl NetMDInterface {
     pub fn disc_flags(&self) -> Result<u8, Box<dyn Error>> {
         self.change_descriptor_state(&Descriptor::RootTD, &DescriptorAction::OpenRead);
         let mut query =
-            format_query("1806 01101000 ff00 0001000b".to_string(), vec![], vec![]).unwrap();
+            format_query("1806 01101000 ff00 0001000b".to_string(), vec![]).unwrap();
 
         let reply = self.send_query(&mut query, false, false)?;
 
@@ -714,7 +704,6 @@ impl NetMDInterface {
 
         let mut query = format_query(
             "1806 02101001 3000 1000 ff00 00000000".to_string(),
-            vec![],
             vec![],
         )
         .unwrap();
@@ -752,18 +741,20 @@ impl NetMDInterface {
             let mut query = format_query(
                 "1806 02201801 00%b 3000 0a00 ff00 %w%w".to_string(),
                 vec![
-                    wchar_value.into(),
-                    (remaining as i64).into(),
-                    (done as i64).into(),
+                    QueryValue::Number(wchar_value),
+                    QueryValue::Number(remaining as i64),
+                    QueryValue::Number(done as i64),
                 ],
-                vec![],
             )
             .unwrap();
 
             let reply = self.send_query(&mut query, false, false)?;
 
             if remaining == 0 {
-                let res = scan_query(reply, "1806 02201801 00%? 3000 0a00 1000 %w0000 %?%?000a %w %*".to_string())?;
+                let res = scan_query(
+                    reply,
+                    "1806 02201801 00%? 3000 0a00 1000 %w0000 %?%?000a %w %*".to_string(),
+                )?;
 
                 chunksize = res[0].to_i64().unwrap() as i32;
                 total = res[1].to_i64().unwrap() as i32;
@@ -771,7 +762,10 @@ impl NetMDInterface {
 
                 chunksize -= 6;
             } else {
-                let res = scan_query(reply, "1806 02201801 00%? 3000 0a00 1000 %w%?%? %*".to_string())?;
+                let res = scan_query(
+                    reply,
+                    "1806 02201801 00%? 3000 0a00 1000 %w%?%? %*".to_string(),
+                )?;
                 chunksize = res[0].to_i64().unwrap() as i32;
                 chunk = SHIFT_JIS.decode(&res[1].to_vec().unwrap()).0.into();
             }
@@ -872,8 +866,6 @@ impl NetMDInterface {
             // TODO: Do some error handling here
             assert!(track_min <= track_max);
 
-            println!("{}, {}", track_min, track_max);
-
             let mut track_list: Vec<u16> = Vec::new();
             for track in track_min - 1..track_max {
                 if track_dict.contains_key(&track) {
@@ -898,7 +890,6 @@ impl NetMDInterface {
             }
         }
 
-        println!("{:#?}", result);
         Ok(result)
     }
 
@@ -911,8 +902,7 @@ impl NetMDInterface {
 
         let mut query = format_query(
             "1806 022018%b %w 3000 0a00 ff00 00000000".to_string(),
-            vec![wchar_value.into(), (track as i64).into()],
-            vec![],
+            vec![QueryValue::Number(wchar_value), QueryValue::Number(track as i64)],
         )
         .unwrap();
 
@@ -939,24 +929,55 @@ impl NetMDInterface {
             .into())
     }
 
-    pub fn set_disc_title(&self, title: String, wchar: bool) -> Result<(), Box<dyn Error>> {
+    pub fn set_disc_title(&self, title: String, wchar: bool) -> Result<String, Box<dyn Error>> {
         let current_title = self._disc_title(wchar)?;
         if current_title == title {
-            return Ok(())
+            return Ok(current_title);
         }
 
-        let old_len = length_after_encoding_to_jis(current_title);
-        let new_len = length_after_encoding_to_jis(title);
+        let new_title: Vec<u8>;
+        let old_len = length_after_encoding_to_jis(&current_title);
 
         let wchar_value = match wchar {
             true => {
-
+                new_title = sanitize_full_width_title(&title, false);
+                1
             },
             false => {
-
-            }
+                new_title = Vec::new();
+                0
+            },
         };
 
-        Ok(())
+        let new_len = new_title.len();
+
+        if self.net_md_device.vendor_id() == &0x04dd {
+            self.change_descriptor_state(&Descriptor::AudioUTOC1TD, &DescriptorAction::OpenWrite)
+        } else {
+            self.change_descriptor_state(&Descriptor::DiscTitleTD, &DescriptorAction::Close);
+            self.change_descriptor_state(&Descriptor::DiscTitleTD, &DescriptorAction::OpenWrite)
+        }
+
+        let mut query = format_query(
+            "1807 02201801 00%b 3000 0a00 5000 %w 0000 %w %*".to_string(),
+            vec![
+                QueryValue::Number(wchar_value),
+                QueryValue::Number(new_len as i64),
+                QueryValue::Number(old_len as i64),
+                QueryValue::Array(new_title),
+            ],
+        )?;
+
+        let reply = self.send_query(&mut query, false, false);
+
+        if self.net_md_device.vendor_id() == &0x04dd {
+            self.change_descriptor_state(&Descriptor::AudioUTOC1TD, &DescriptorAction::Close)
+        } else {
+            self.change_descriptor_state(&Descriptor::DiscTitleTD, &DescriptorAction::Close);
+            self.change_descriptor_state(&Descriptor::DiscTitleTD, &DescriptorAction::OpenRead);
+            self.change_descriptor_state(&Descriptor::DiscTitleTD, &DescriptorAction::Close);
+        }
+
+        Ok(String::from_utf8(sanitize_full_width_title(&title, true)).unwrap())
     }
 }

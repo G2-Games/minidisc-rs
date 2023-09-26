@@ -1,6 +1,8 @@
-use std::collections::hash_map::HashMap;
 use encoding_rs::SHIFT_JIS;
+use kana::{ascii2wide, combine, half2kana};
+use std::collections::hash_map::HashMap;
 use std::error::Error;
+use crate::netmd::mappings::{MAPPINGS_JP, MAPPINGS_RU, MAPPINGS_DE};
 
 pub fn bcd_to_int(mut bcd: i32) -> i32 {
     let mut value = 0;
@@ -68,8 +70,51 @@ pub fn get_bytes<const S: usize>(
     Ok(bytes)
 }
 
-pub fn length_after_encoding_to_jis(string: String) -> usize {
-    let new_string = SHIFT_JIS.encode(&string);
+pub fn length_after_encoding_to_jis(string: &String) -> usize {
+    let new_string = SHIFT_JIS.encode(string);
 
     new_string.0.len()
+}
+
+pub fn validate_shift_jis(sjis_string: &Vec<u8>) -> Result<(), Box<dyn Error>> {
+    let (_, _, had_errors) = SHIFT_JIS.decode(sjis_string);
+
+    if had_errors {
+        Err("Not valid SHIFT-JIS".into())
+    } else {
+        Ok(())
+    }
+}
+
+// TODO: This function is bad, probably should do the string sanitization in the frontend
+pub fn sanitize_full_width_title(title: &String, just_remap: bool) -> Vec<u8> {
+    let new_title: String = title
+        .chars()
+        .map(|character| {
+            match MAPPINGS_JP.get(&character.to_string()) {
+                Some(string) => string.clone(),
+                None => character.to_string().clone()
+            }.to_string()
+        })
+        .map(|character| {
+            match MAPPINGS_RU.get(&character.to_string()) {
+                Some(string) => string.clone(),
+                None => character.to_string().clone()
+            }.to_string()
+        })
+        .map(|character| {
+            match MAPPINGS_DE.get(&character.to_string()) {
+                Some(string) => string.clone(),
+                None => character.to_string().clone()
+            }.to_string()
+        })
+        .collect::<String>();
+
+    if just_remap {
+        return new_title.into();
+    };
+
+    let sjis_string = SHIFT_JIS.encode(&new_title).0;
+
+    return sjis_string.into();
 }
