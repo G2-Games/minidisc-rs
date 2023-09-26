@@ -1,8 +1,12 @@
+use crate::netmd::mappings::{ALLOWED_HW_KANA, MAPPINGS_DE, MAPPINGS_HW, MAPPINGS_JP, MAPPINGS_RU};
+use diacritics;
 use encoding_rs::SHIFT_JIS;
-use kana::{ascii2wide, combine, half2kana};
+use regex::Regex;
 use std::collections::hash_map::HashMap;
-use std::error::Error;
-use crate::netmd::mappings::{MAPPINGS_JP, MAPPINGS_RU, MAPPINGS_DE};
+use unicode_normalization::UnicodeNormalization;
+
+extern crate kana;
+use kana::*;
 
 pub fn bcd_to_int(mut bcd: i32) -> i32 {
     let mut value = 0;
@@ -76,14 +80,49 @@ pub fn length_after_encoding_to_jis(string: &String) -> usize {
     new_string.0.len()
 }
 
-pub fn validate_shift_jis(sjis_string: &Vec<u8>) -> Result<(), Box<dyn Error>> {
-    let (_, _, had_errors) = SHIFT_JIS.decode(sjis_string);
+pub fn validate_shift_jis(sjis_string: Vec<u8>) -> bool {
+    let (_, _, had_errors) = SHIFT_JIS.decode(&sjis_string);
 
     if had_errors {
-        Err("Not valid SHIFT-JIS".into())
+        true
     } else {
-        Ok(())
+        false
     }
+}
+
+fn check(string: String) -> Option<String> {
+    if MAPPINGS_HW.contains_key(&string) {
+        return Some(MAPPINGS_HW.get(&string).unwrap().to_string());
+    }
+    let mut ch = string.chars();
+    if (ch.next().unwrap() as u32) < 0x7f || ALLOWED_HW_KANA.contains(&string) {
+        return Some(string);
+    }
+    None
+}
+
+pub fn sanitize_half_width_title(mut title: String) -> Vec<u8> {
+    title = wide2ascii(&title);
+    title = nowidespace(&title);
+    title = hira2kata(&title);
+    title = combine(&title);
+
+    let new_title: String = title
+        .chars()
+        .map(|c| {
+            check(c.to_string()).unwrap_or(
+                check(diacritics::remove_diacritics(&c.to_string())).unwrap_or(" ".to_string()),
+            )
+        })
+        .collect();
+
+    let sjis_string = SHIFT_JIS.encode(&new_title).0;
+
+    if validate_shift_jis(sjis_string.clone().into()) {
+        return agressive_sanitize_title(&title).into();
+    }
+
+    return sjis_string.into();
 }
 
 // TODO: This function is bad, probably should do the string sanitization in the frontend
@@ -93,20 +132,23 @@ pub fn sanitize_full_width_title(title: &String, just_remap: bool) -> Vec<u8> {
         .map(|character| {
             match MAPPINGS_JP.get(&character.to_string()) {
                 Some(string) => string.clone(),
-                None => character.to_string().clone()
-            }.to_string()
+                None => character.to_string().clone(),
+            }
+            .to_string()
         })
         .map(|character| {
             match MAPPINGS_RU.get(&character.to_string()) {
                 Some(string) => string.clone(),
-                None => character.to_string().clone()
-            }.to_string()
+                None => character.to_string().clone(),
+            }
+            .to_string()
         })
         .map(|character| {
             match MAPPINGS_DE.get(&character.to_string()) {
                 Some(string) => string.clone(),
-                None => character.to_string().clone()
-            }.to_string()
+                None => character.to_string().clone(),
+            }
+            .to_string()
         })
         .collect::<String>();
 
@@ -116,5 +158,20 @@ pub fn sanitize_full_width_title(title: &String, just_remap: bool) -> Vec<u8> {
 
     let sjis_string = SHIFT_JIS.encode(&new_title).0;
 
+    if validate_shift_jis(sjis_string.clone().into()) {
+        return agressive_sanitize_title(&title).into();
+    }
+
     return sjis_string.into();
+}
+
+pub fn agressive_sanitize_title(title: &String) -> String {
+    let re = Regex::new(r"[^\x00-\x7F]").unwrap();
+    re.replace_all(
+        &diacritics::remove_diacritics(title)
+            .nfd()
+            .collect::<String>(),
+        "",
+    )
+    .into()
 }

@@ -1,7 +1,8 @@
 use crate::netmd::base;
 use crate::netmd::query_utils::{format_query, scan_query, QueryValue};
 use crate::netmd::utils::{
-    half_width_to_full_width_range, length_after_encoding_to_jis, sanitize_full_width_title,
+    half_width_to_full_width_range, length_after_encoding_to_jis,
+    sanitize_full_width_title, sanitize_half_width_title
 };
 use encoding_rs::*;
 use rusb;
@@ -929,10 +930,10 @@ impl NetMDInterface {
             .into())
     }
 
-    pub fn set_disc_title(&self, title: String, wchar: bool) -> Result<String, Box<dyn Error>> {
+    pub fn set_disc_title(&self, title: String, wchar: bool) -> Result<(), Box<dyn Error>> {
         let current_title = self._disc_title(wchar)?;
         if current_title == title {
-            return Ok(current_title);
+            return Ok(());
         }
 
         let new_title: Vec<u8>;
@@ -944,7 +945,7 @@ impl NetMDInterface {
                 1
             },
             false => {
-                new_title = Vec::new();
+                new_title = sanitize_half_width_title(title);
                 0
             },
         };
@@ -968,7 +969,7 @@ impl NetMDInterface {
             ],
         )?;
 
-        let reply = self.send_query(&mut query, false, false);
+        let _ = self.send_query(&mut query, false, false);
 
         if self.net_md_device.vendor_id() == &0x04dd {
             self.change_descriptor_state(&Descriptor::AudioUTOC1TD, &DescriptorAction::Close)
@@ -978,6 +979,6 @@ impl NetMDInterface {
             self.change_descriptor_state(&Descriptor::DiscTitleTD, &DescriptorAction::Close);
         }
 
-        Ok(String::from_utf8(sanitize_full_width_title(&title, true)).unwrap())
+        Ok(())
     }
 }
