@@ -25,6 +25,7 @@ const FORMAT_TYPE_LEN_DICT: Lazy<HashMap<char, i32>> = Lazy::new(|| {
 
 const DEBUG: bool = false;
 
+#[derive(Clone, Debug)]
 pub enum QueryValue {
     Number(i64),
     Array(Vec<u8>),
@@ -250,7 +251,7 @@ pub fn scan_query(
                 u8::from_str_radix(&String::from_iter([half.unwrap(), character]), 16).unwrap();
             if format_value != input_value {
                 let i = initial_length - input_stack.len() - 1;
-                return Err(format!("Format and input mismatch at {i}: expected {format_value:#0x}, got {input_value:#0x} (format {format})").into());
+                return Err(format!("Format and input mismatch at {i}: expected {format_value:#04x}, got {input_value:#04x} (format {format})").into());
             }
             half = None;
         }

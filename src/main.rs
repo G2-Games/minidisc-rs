@@ -21,6 +21,7 @@ fn main() {
             new_device.read_product_string_ascii(&device_desc)
         );
 
+        // Ensure the player is a minidisc player and not some other random device
         let player_controller = match interface::NetMDInterface::new(new_device, device_desc) {
             Ok(player) => player,
             Err(_) => continue
@@ -30,25 +31,30 @@ fn main() {
             "Player Model: {}",
             player_controller.net_md_device.device_name().clone().unwrap()
         );
-        println!("Track Count: {:?}", player_controller.track_count().unwrap());
+        println!("Track Count:    {:?}", player_controller.track_count().unwrap());
 
-        //println!("TEST CASE:   {:?}", player_controller);
-        sleep(std::time::Duration::from_secs(2));
+        println!("TEST CASE: {:?}", player_controller.disc_capacity().unwrap());
+
         println!(
             "Disc Title:  {: >18} | {}\n-----------------------------------------------------------------",
-            player_controller.disc_title(false).unwrap().split_at(18).0,
+            player_controller.disc_title(false).unwrap(),
             player_controller.disc_title(true).unwrap()
         );
 
-        let _ = player_controller.play();
-
+        let mut total = 0;
         for i in 0..player_controller.track_count().unwrap() {
             println!(
-                "Track {: >2}: {: >21} | {}",
+                "{: >2} | {:0>2}:{:0>2}:{:0>2} | {:?} : {: >21} | {}",
                 i + 1,
+                (player_controller.track_length(i as u16).unwrap().as_secs() / 60) / 60,
+                (player_controller.track_length(i as u16).unwrap().as_secs() / 60) % 60,
+                player_controller.track_length(i as u16).unwrap().as_secs() % 60,
+                player_controller.track_encoding(i as u16).unwrap(),
                 player_controller.track_title(i as u16, false).unwrap(),
                 player_controller.track_title(i as u16, true).unwrap()
             );
+            total += player_controller.track_length(i as u16).unwrap().as_secs();
         }
+        println!("{}", total);
     }
 }

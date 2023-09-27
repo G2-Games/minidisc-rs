@@ -175,3 +175,8 @@ pub fn agressive_sanitize_title(title: &String) -> String {
     )
     .into()
 }
+
+pub fn time_to_frames(time: &[i64]) -> i64 {
+    assert_eq!(time.len(), 4);
+    return (((time[0] as f64 * 60.0 + time[1] as f64) * 60.0 + time[2] as f64) * 424.0 + time[3] as f64) as i64
+}
