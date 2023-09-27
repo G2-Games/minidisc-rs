@@ -3,17 +3,7 @@ use once_cell::sync::Lazy;
 use std::collections::hash_map::HashMap;
 use std::error::Error;
 
-// prettier-ignore
-const FORMAT_TYPE_LEN_DICT: Lazy<HashMap<char, i32>> = Lazy::new(|| {
-    HashMap::from([
-        ('b', 1), // byte
-        ('w', 2), // word
-        ('d', 4), // doubleword
-        ('q', 8), // quadword
-    ])
-});
-
-/*
+/**
     %b, w, d, q - explained above (can have endiannes overriden by '>' and '<' operators, f. ex. %>d %<q)
     %s - Uint8Array preceded by 2 bytes of length
     %x - Uint8Array preceded by 2 bytes of length
@@ -22,6 +12,15 @@ const FORMAT_TYPE_LEN_DICT: Lazy<HashMap<char, i32>> = Lazy::new(|| {
     %B - BCD-encoded 1-byte number
     %W - BCD-encoded 2-byte number
 */
+
+const FORMAT_TYPE_LEN_DICT: Lazy<HashMap<char, i32>> = Lazy::new(|| {
+    HashMap::from([
+        ('b', 1), // byte
+        ('w', 2), // word
+        ('d', 4), // doubleword
+        ('q', 8), // quadword
+    ])
+});
 
 const DEBUG: bool = false;
 

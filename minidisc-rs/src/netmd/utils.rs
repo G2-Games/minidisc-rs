@@ -107,6 +107,8 @@ pub fn sanitize_half_width_title(mut title: String) -> Vec<u8> {
     title = hira2kata(&title);
     title = combine(&title);
 
+    println!("{}", title);
+
     let new_title: String = title
         .chars()
         .map(|c| {

@@ -27,34 +27,49 @@ fn main() {
             Err(_) => continue
         };
 
+        println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
         println!(
             "Player Model: {}",
             player_controller.net_md_device.device_name().clone().unwrap()
         );
-        println!("Track Count:    {:?}", player_controller.track_count().unwrap());
+        //println!("TEST CASE: {:?}", player_controller.set_track_title(3, "初音ミクの消失".to_string(), false).unwrap());
 
-        println!("TEST CASE: {:?}", player_controller.disc_capacity().unwrap());
+        let now = std::time::SystemTime::now();
+        let times = player_controller.all_track_length().unwrap();
+        let titles_hw = player_controller.all_track_titles(false).unwrap();
+        let titles_fw = player_controller.all_track_titles(true).unwrap();
+
+        /*
+        let now = std::time::SystemTime::now();
+        for i in 0..player_controller.track_count().unwrap() {
+            player_controller.track_length(i as u16);
+            player_controller.track_title(i as u16, false);
+            player_controller.track_title(i as u16, true);
+        }
+        println!("Individual: {}ms", now.elapsed().unwrap().as_millis());
+        */
 
         println!(
-            "Disc Title:  {: >18} | {}\n-----------------------------------------------------------------",
+            "━━━━━━━━━━━━━━━┯━━━━━━━━━━━━━━━━━━━━━━━┯━━━━━━━━━━━━━━━━━━━━━━━━━
+       Tracks: │ {: <21} │
+   Disc Title: │ {: >21} │ {}
+────┬──────────┼───────────────────────┼─────────────────────────",
+            player_controller.track_count().unwrap(),
             player_controller.disc_title(false).unwrap(),
             player_controller.disc_title(true).unwrap()
         );
 
-        let mut total = 0;
         for i in 0..player_controller.track_count().unwrap() {
             println!(
-                "{: >2} | {:0>2}:{:0>2}:{:0>2} | {:?} : {: >21} | {}",
+                " {: >2} │ {:0>2}:{:0>2}:{:0>2} │ {: >21} │ {}",
                 i + 1,
-                (player_controller.track_length(i as u16).unwrap().as_secs() / 60) / 60,
-                (player_controller.track_length(i as u16).unwrap().as_secs() / 60) % 60,
-                player_controller.track_length(i as u16).unwrap().as_secs() % 60,
-                player_controller.track_encoding(i as u16).unwrap(),
-                player_controller.track_title(i as u16, false).unwrap(),
-                player_controller.track_title(i as u16, true).unwrap()
+                (times[i as usize].as_secs() / 60) / 60,
+                (times[i as usize].as_secs() / 60) % 60,
+                times[i as usize].as_secs() % 60,
+                titles_hw[i as usize],
+                titles_fw[i as usize]
             );
-            total += player_controller.track_length(i as u16).unwrap().as_secs();
         }
-        println!("{}", total);
+        println!("────┴──────────┴───────────────────────┴─────────────────────────\nFinished in: [{}ms]", now.elapsed().unwrap().as_millis());
     }
 }

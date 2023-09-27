@@ -938,6 +938,47 @@ impl NetMDInterface {
             .into())
     }
 
+    pub fn all_track_titles(&self, wchar: bool) -> Result<Vec<String>, Box<dyn Error>> {
+        let wchar_value = match wchar {
+            true => 3,
+            false => 2,
+        };
+
+        let descriptor_type = match wchar {
+            true => Descriptor::AudioUTOC4TD,
+            false => Descriptor::AudioUTOC1TD,
+        };
+
+        self.change_descriptor_state(&descriptor_type, &DescriptorAction::OpenRead);
+
+        let mut track_titles: Vec<String> = vec![];
+        for i in 0..self.track_count().unwrap() {
+
+            let mut query = format_query(
+                "1806 022018%b %w 3000 0a00 ff00 00000000".to_string(),
+                vec![QueryValue::Number(wchar_value), QueryValue::Number(i as i64)],
+            )
+            .unwrap();
+
+            let reply = self.send_query(&mut query, false, false)?;
+
+            let res = scan_query(
+                reply,
+                "1806 022018%? %?%? %?%? %?%? 1000 00%?0000 00%?000a %x".to_string(),
+            )
+            .unwrap();
+
+            track_titles.push(encoding_rs::SHIFT_JIS
+                .decode(&res[0].to_vec().unwrap())
+                .0
+                .into())
+        }
+
+        self.change_descriptor_state(&descriptor_type, &DescriptorAction::Close);
+
+        Ok(track_titles)
+    }
+
     // Sets the title of the disc
     pub fn set_disc_title(&self, title: String, wchar: bool) -> Result<(), Box<dyn Error>> {
         let current_title = self._disc_title(wchar)?;
@@ -1086,9 +1127,40 @@ impl NetMDInterface {
         let reply = self.send_query(&mut query, false, false)?;
         let res = scan_query(reply, "1806 02201001 %?%? %?%? %?%? 1000 00%?0000 %x".to_string())?;
 
-        self.change_descriptor_state(&Descriptor::AudioContentsTD, &DescriptorAction::OpenRead);
+        self.change_descriptor_state(&Descriptor::AudioContentsTD, &DescriptorAction::Close);
 
         return Ok(res[0].to_vec().unwrap());
+    }
+
+    pub fn all_track_length(&self) -> Result<Vec<std::time::Duration>, Box<dyn Error>> {
+        let mut times: Vec<std::time::Duration> = vec![];
+
+        self.change_descriptor_state(&Descriptor::AudioContentsTD, &DescriptorAction::OpenRead);
+        for track in 0..self.track_count()? {
+            let mut query = format_query(
+                "1806 02201001 %w %w %w ff00 00000000".to_string(),
+                vec![
+                    QueryValue::Number(track as i64),
+                    QueryValue::Number(0x3000),
+                    QueryValue::Number(0x0100),
+                ],
+            )?;
+
+            let reply = self.send_query(&mut query, false, false)?;
+
+            let res = scan_query(reply, "1806 02201001 %?%? %?%? %?%? 1000 00%?0000 %x".to_string())?;
+
+            let result = scan_query(res[0].to_vec().unwrap(), "01 0006 0000 %B %B %B %B".to_string())?;
+
+            let times_num: Vec<u64> = result.into_iter().map(|v| v.to_i64().unwrap() as u64).collect();
+
+            let time_micros = (times_num[0] * 3600000000) + (times_num[1] * 60000000) + (times_num[2] * 1000000) + (times_num[3] * 11600);
+            times.push(std::time::Duration::from_micros(time_micros));
+        }
+
+        self.change_descriptor_state(&Descriptor::AudioContentsTD, &DescriptorAction::Close);
+
+        Ok(times)
     }
 
     /// Gets the length of a track as a `std::time::Duration`
