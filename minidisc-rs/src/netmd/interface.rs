@@ -1230,7 +1230,7 @@ impl NetMDInterface {
             ],
         )?;
 
-        let reply = self.send_query(&mut query, false, false)?;
+        let reply = self.send_query(&mut query, false, true)?;
 
         let res = scan_query(reply, "1800 080046 f0030103 300000 1001 %w %b %d".to_string())?;
 
