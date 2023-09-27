@@ -5,13 +5,19 @@ use minidisc_rs::netmd::interface;
 use rusb;
 
 fn main() {
+    let mut die = false;
     for device in rusb::devices().unwrap().iter() {
+        if die {
+            break;
+        }
+        
         let device_desc = device.device_descriptor().unwrap();
 
         let new_device = match device.open() {
             Ok(device) => device,
             Err(_) => continue,
         };
+        die = true;
 
         println!(
             "Connected to Bus {:03} Device {:03} VID: {:04x}, PID: {:04x}, {:?}",

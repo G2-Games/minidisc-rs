@@ -3,7 +3,7 @@ use once_cell::sync::Lazy;
 use rusb::{DeviceDescriptor, DeviceHandle, Direction, GlobalContext, Recipient, RequestType};
 use std::error::Error;
 
-const DEFAULT_TIMEOUT: std::time::Duration = std::time::Duration::new(1, 0);
+const DEFAULT_TIMEOUT: std::time::Duration = std::time::Duration::new(9999999, 0);
 
 const STANDARD_SEND: u8 =
     rusb::request_type(Direction::Out, RequestType::Vendor, Recipient::Interface);
@@ -11,7 +11,7 @@ const STANDARD_RECV: u8 =
     rusb::request_type(Direction::In, RequestType::Vendor, Recipient::Interface);
 
 const BULK_WRITE_ENDPOINT: u8 = 0x02;
-const BULK_READ_ENDPOINT: u8 = 0x01;
+const BULK_READ_ENDPOINT: u8 = 0x81;
 
 pub const CHUNKSIZE: u32 = 0x10000;
 
@@ -110,7 +110,8 @@ impl NetMD {
             if device_type.vendor_id == model.vendor_id
                 && device_type.product_id == model.product_id
             {
-                model.name = device_type.name.clone()
+                model.name = device_type.name.clone();
+                break;
             }
         }
 
@@ -273,7 +274,7 @@ impl NetMD {
         length: u32,
         chunksize: u32,
     ) -> Result<Vec<u8>, Box<dyn Error>> {
-        let final_result: Vec<u8> = Vec::new();
+        let mut final_result: Vec<u8> = Vec::new();
         let mut done = 0;
 
         while done < length {
@@ -285,6 +286,7 @@ impl NetMD {
                 &mut buffer,
                 DEFAULT_TIMEOUT,
             )? as u32;
+            final_result.extend_from_slice(&mut buffer);
         }
 
         Ok(final_result)
@@ -293,7 +295,7 @@ impl NetMD {
     pub fn write_bulk(&self, data: &mut Vec<u8>) -> Result<usize, Box<dyn Error>> {
         let written =
             self.device_connection
-                .read_bulk(BULK_WRITE_ENDPOINT, data, DEFAULT_TIMEOUT)?;
+                .write_bulk(BULK_WRITE_ENDPOINT, data, DEFAULT_TIMEOUT)?;
 
         Ok(written)
     }
