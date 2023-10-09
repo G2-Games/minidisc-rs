@@ -9,8 +9,9 @@ authors = ["G2 <g2@g2games.dev>"]
 license = "AGPL-3.0"
 
 [dependencies]
-rusb = "0.9.3"
+hex = "0.4.3"
 translit = "0.5.0"
+webusb = "0.5.0"
 
 [dependencies.minidisc-rs]
 path = "minidisc-rs"

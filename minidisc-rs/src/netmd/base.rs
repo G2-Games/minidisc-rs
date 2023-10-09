@@ -1,14 +1,10 @@
 use nofmt;
 use once_cell::sync::Lazy;
-use rusb::{DeviceDescriptor, DeviceHandle, Direction, GlobalContext, Recipient, RequestType};
+use webusb::{UsbDevice, UsbRecipient, UsbRequestType, UsbControlTransferParameters};
 use std::error::Error;
 
 const DEFAULT_TIMEOUT: std::time::Duration = std::time::Duration::new(9999999, 0);
 
-const STANDARD_SEND: u8 =
-    rusb::request_type(Direction::Out, RequestType::Vendor, Recipient::Interface);
-const STANDARD_RECV: u8 =
-    rusb::request_type(Direction::In, RequestType::Vendor, Recipient::Interface);
 
 const BULK_WRITE_ENDPOINT: u8 = 0x02;
 const BULK_READ_ENDPOINT: u8 = 0x81;
@@ -87,7 +83,7 @@ pub struct DeviceId {
 }
 
 pub struct NetMD {
-    device_connection: DeviceHandle<GlobalContext>,
+    device_connection: UsbDevice,
     model: DeviceId,
     status: Option<Status>,
 }
@@ -97,12 +93,11 @@ impl NetMD {
 
     /// Creates a new `NetMD` struct
     pub fn new(
-        device: DeviceHandle<GlobalContext>,
-        device_desc: DeviceDescriptor,
+        device: UsbDevice,
     ) -> Result<Self, Box<dyn Error>> {
         let mut model = DeviceId {
-            vendor_id: device_desc.vendor_id(),
-            product_id: device_desc.product_id(),
+            vendor_id: device.vendor_id,
+            product_id: device.product_id,
             name: None,
         };
 
@@ -144,37 +139,36 @@ impl NetMD {
 
     /// Poll the device to get either the result
     /// of the previous command, or the status
-    fn poll(&self) -> Result<(u16, [u8; 4]), Box<dyn Error>> {
-        // Create an array to store the result of the poll
-        let mut poll_result = [0u8; 4];
-
-        let _status = match self.device_connection.read_control(
-            STANDARD_RECV,
-            0x01,
-            0,
-            0,
-            &mut poll_result,
-            DEFAULT_TIMEOUT,
+    pub fn poll(&mut self) -> Result<(u16, [u8; 4]), Box<dyn Error>> {
+        let poll_result: [u8; 4] = match self.device_connection.control_transfer_in(
+            UsbControlTransferParameters {
+                request_type: UsbRequestType::Vendor,
+                recipient: UsbRecipient::Interface,
+                request: 0x01,
+                value: 0,
+                index: 0,
+            },
+            4
         ) {
-            Ok(size) => size,
-            Err(error) => return Err(error.into()),
+            Ok(result) => result.try_into().unwrap(),
+            Err(error) => return Err(format!("USB error: {:?}", error).into()),
         };
 
         let length_bytes = [poll_result[2], poll_result[3]];
         Ok((u16::from_le_bytes(length_bytes), poll_result))
     }
 
-    pub fn send_command(&self, command: Vec<u8>) -> Result<(), Box<dyn Error>> {
+    pub fn send_command(&mut self, command: Vec<u8>) -> Result<(), Box<dyn Error>> {
         self._send_command(command, false)
     }
 
-    pub fn send_factory_command(&self, command: Vec<u8>) -> Result<(), Box<dyn Error>> {
-        self._send_command(command, false)
+    pub fn send_factory_command(&mut self, command: Vec<u8>) -> Result<(), Box<dyn Error>> {
+        self._send_command(command, true)
     }
 
     /// Send a control message to the device
     fn _send_command(
-        &self,
+        &mut self,
         command: Vec<u8>,
         use_factory_command: bool,
     ) -> Result<(), Box<dyn Error>> {
@@ -192,25 +186,27 @@ impl NetMD {
             true => 0xff,
         };
 
-        match self.device_connection.write_control(
-            STANDARD_SEND,
-            request,
-            0,
-            0,
-            &command,
-            DEFAULT_TIMEOUT,
+        match self.device_connection.control_transfer_out(
+            UsbControlTransferParameters {
+                request_type: UsbRequestType::Vendor,
+                recipient: UsbRecipient::Interface,
+                request,
+                value: 0,
+                index: 0,
+            },
+            &command
         ) {
             Ok(_) => Ok(()),
-            Err(error) => Err(error.into()),
+            Err(error) => Err(format!("USB error: {:?}", error).into()),
         }
     }
 
-    pub fn read_reply(&self, override_length: Option<i32>) -> Result<Vec<u8>, Box<dyn Error>> {
+    pub fn read_reply(&mut self, override_length: Option<i32>) -> Result<Vec<u8>, Box<dyn Error>> {
         self._read_reply(false, override_length)
     }
 
     pub fn read_factory_reply(
-        &self,
+        &mut self,
         override_length: Option<i32>,
     ) -> Result<Vec<u8>, Box<dyn Error>> {
         self._read_reply(true, override_length)
@@ -219,7 +215,7 @@ impl NetMD {
     /// Poll to see if a message is ready,
     /// and if so, recieve it
     fn _read_reply(
-        &self,
+        &mut self,
         use_factory_command: bool,
         override_length: Option<i32>,
     ) -> Result<Vec<u8>, Box<dyn Error>> {
@@ -246,31 +242,31 @@ impl NetMD {
         };
 
         // Create a buffer to fill with the result
-        let mut buf: Vec<u8> = vec![0; length as usize];
-
-        match self.device_connection.read_control(
-            STANDARD_RECV,
-            request,
-            0,
-            0,
-            &mut buf,
-            DEFAULT_TIMEOUT,
+        match self.device_connection.control_transfer_in(
+            UsbControlTransferParameters {
+                request_type: UsbRequestType::Vendor,
+                recipient: UsbRecipient::Interface,
+                request,
+                value: 0,
+                index: 0,
+            },
+            length as usize
         ) {
-            Ok(_) => Ok(buf),
-            Err(error) => return Err(error.into()),
+            Ok(data) => Ok(data),
+            Err(error) => return Err(format!("USB error: {:?}", error).into()),
         }
     }
 
     // Default chunksize should be 0x10000
     // TODO: Make these Async eventually
-    pub fn read_bulk(&self, length: u32, chunksize: u32) -> Result<Vec<u8>, Box<dyn Error>> {
+    pub fn read_bulk(&mut self, length: u32, chunksize: u32) -> Result<Vec<u8>, Box<dyn Error>> {
         let result = self.read_bulk_to_array(length, chunksize)?;
 
-        Ok(result.to_vec())
+        Ok(result)
     }
 
     pub fn read_bulk_to_array(
-        &self,
+        &mut self,
         length: u32,
         chunksize: u32,
     ) -> Result<Vec<u8>, Box<dyn Error>> {
@@ -279,23 +275,31 @@ impl NetMD {
 
         while done < length {
             let to_read = std::cmp::min(chunksize, length - done);
-            let mut buffer: Vec<u8> = vec![0; to_read as usize];
+            done -= to_read;
+            let mut buffer;
 
-            done += self.device_connection.read_bulk(
+            buffer = match self.device_connection.transfer_in(
                 BULK_READ_ENDPOINT,
-                &mut buffer,
-                DEFAULT_TIMEOUT,
-            )? as u32;
+                to_read as usize,
+            ) {
+                Ok(result) => result,
+                Err(error) => return Err(format!("USB error: {:?}", error).into())
+            };
+
             final_result.extend_from_slice(&mut buffer);
         }
 
         Ok(final_result)
     }
 
-    pub fn write_bulk(&self, data: &mut Vec<u8>) -> Result<usize, Box<dyn Error>> {
-        let written =
-            self.device_connection
-                .write_bulk(BULK_WRITE_ENDPOINT, data, DEFAULT_TIMEOUT)?;
+    pub fn write_bulk(&mut self, data: &mut Vec<u8>) -> Result<usize, Box<dyn Error>> {
+        let written = match self.device_connection.transfer_out(
+            BULK_WRITE_ENDPOINT,
+            data
+        ) {
+            Ok(output) => output,
+            Err(error) => return Err(format!("USB error: {:?}", error).into())
+        };
 
         Ok(written)
     }
