@@ -2,7 +2,7 @@ use crate::netmd::mappings::{ALLOWED_HW_KANA, MAPPINGS_DE, MAPPINGS_HW, MAPPINGS
 use diacritics;
 use encoding_rs::SHIFT_JIS;
 use regex::Regex;
-use std::collections::hash_map::HashMap;
+use std::{collections::hash_map::HashMap, error::Error, vec::IntoIter};
 use unicode_normalization::UnicodeNormalization;
 
 extern crate kana;
@@ -14,7 +14,7 @@ pub fn bcd_to_int(mut bcd: i32) -> i32 {
 
     while bcd != 0 {
         let nibble_value = bcd & 0xf;
-        bcd = bcd >> 4;
+        bcd >>= 4;
         value += nibble_value * i32::pow(10, nibble);
         nibble += 1;
     }
@@ -36,7 +36,7 @@ pub fn int_to_bcd(mut value: i32) -> i32 {
     bcd
 }
 
-pub fn half_width_to_full_width_range(range: &String) -> String {
+pub fn half_width_to_full_width_range(range: &str) -> String {
     let mappings: HashMap<char, char> = HashMap::from([
         ('0', '０'),
         ('1', '１'),
@@ -60,21 +60,15 @@ pub fn half_width_to_full_width_range(range: &String) -> String {
 }
 
 pub fn get_bytes<const S: usize>(
-    iterator: &mut std::vec::IntoIter<u8>,
-) -> Result<[u8; S], Box<dyn std::error::Error>> {
-    let mut bytes = [0; S];
-
-    for i in 0..S {
-        bytes[i] = match iterator.next() {
-            Some(byte) => byte,
-            None => return Err("Could not retrieve byte from file".into()),
-        };
-    }
+    iterator: &mut IntoIter<u8>,
+) -> Result<[u8; S], Box<dyn Error>> {
+    let byte_vec: Vec<u8> = iterator.take(S).collect();
+    let bytes: [u8; S] = byte_vec.try_into().unwrap();
 
     Ok(bytes)
 }
 
-pub fn length_after_encoding_to_jis(string: &String) -> usize {
+pub fn length_after_encoding_to_jis(string: &str) -> usize {
     let new_string = SHIFT_JIS.encode(string);
 
     new_string.0.len()
@@ -83,11 +77,7 @@ pub fn length_after_encoding_to_jis(string: &String) -> usize {
 pub fn validate_shift_jis(sjis_string: Vec<u8>) -> bool {
     let (_, _, had_errors) = SHIFT_JIS.decode(&sjis_string);
 
-    if had_errors {
-        true
-    } else {
-        false
-    }
+    had_errors
 }
 
 fn check(string: String) -> Option<String> {
@@ -124,11 +114,11 @@ pub fn sanitize_half_width_title(mut title: String) -> Vec<u8> {
         return agressive_sanitize_title(&title).into();
     }
 
-    return sjis_string.into();
+    sjis_string.into()
 }
 
 // TODO: This function is bad, probably should do the string sanitization in the frontend
-pub fn sanitize_full_width_title(title: &String, just_remap: bool) -> Vec<u8> {
+pub fn sanitize_full_width_title(title: &str, just_remap: bool) -> Vec<u8> {
     let new_title: String = title
         .chars()
         .map(|character| {
@@ -161,13 +151,13 @@ pub fn sanitize_full_width_title(title: &String, just_remap: bool) -> Vec<u8> {
     let sjis_string = SHIFT_JIS.encode(&new_title).0;
 
     if validate_shift_jis(sjis_string.clone().into()) {
-        return agressive_sanitize_title(&title).into();
+        return agressive_sanitize_title(title).into();
     }
 
-    return sjis_string.into();
+    sjis_string.into()
 }
 
-pub fn agressive_sanitize_title(title: &String) -> String {
+pub fn agressive_sanitize_title(title: &str) -> String {
     let re = Regex::new(r"[^\x00-\x7F]").unwrap();
     re.replace_all(
         &diacritics::remove_diacritics(title)

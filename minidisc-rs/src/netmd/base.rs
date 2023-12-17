@@ -231,10 +231,7 @@ impl NetMD {
             current_attempt += 1;
         }
 
-        match override_length {
-            Some(value) => length = value as u16,
-            None => (),
-        }
+        if let Some(value) = override_length { length = value as u16 }
 
         let request = match use_factory_command {
             false => 0x81,
@@ -253,7 +250,7 @@ impl NetMD {
             length as usize
         ) {
             Ok(data) => Ok(data),
-            Err(error) => return Err(format!("USB error: {:?}", error).into()),
+            Err(error) => Err(format!("USB error: {:?}", error).into()),
         }
     }
 
@@ -276,9 +273,8 @@ impl NetMD {
         while done < length {
             let to_read = std::cmp::min(chunksize, length - done);
             done -= to_read;
-            let mut buffer;
 
-            buffer = match self.device_connection.transfer_in(
+            let buffer = match self.device_connection.transfer_in(
                 BULK_READ_ENDPOINT,
                 to_read as usize,
             ) {
@@ -286,13 +282,13 @@ impl NetMD {
                 Err(error) => return Err(format!("USB error: {:?}", error).into())
             };
 
-            final_result.extend_from_slice(&mut buffer);
+            final_result.extend_from_slice(&buffer);
         }
 
         Ok(final_result)
     }
 
-    pub fn write_bulk(&mut self, data: &mut Vec<u8>) -> Result<usize, Box<dyn Error>> {
+    pub fn write_bulk(&mut self, data: &mut [u8]) -> Result<usize, Box<dyn Error>> {
         let written = match self.device_connection.transfer_out(
             BULK_WRITE_ENDPOINT,
             data

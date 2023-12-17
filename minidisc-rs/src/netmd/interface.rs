@@ -9,10 +9,11 @@ use std::collections::HashMap;
 use std::error::Error;
 use magic_crypt::{MagicCrypt, SecureBit, MagicCryptTrait, new_magic_crypt};
 use hex;
-use once_cell::sync::Lazy;
+
 use std::thread::sleep;
 use std::time::Duration;
 use webusb;
+use lazy_static::lazy_static;
 
 #[derive(Copy, Clone)]
 enum Action {
@@ -38,7 +39,7 @@ pub enum DiscFormat {
 
 #[derive(Clone, Hash, Eq, PartialEq)]
 enum WireFormat {
-    PCM = 0x00,
+    Pcm = 0x00,
     L105kbps = 0x90,
     LP2 = 0x94,
     LP4 = 0xA8,
@@ -47,7 +48,7 @@ enum WireFormat {
 impl WireFormat {
     fn frame_size(&self) -> u16 {
         match self {
-            WireFormat::PCM => 2048,
+            WireFormat::Pcm => 2048,
             WireFormat::L105kbps => 192,
             WireFormat::LP2 => 152,
             WireFormat::LP4 => 96,
@@ -105,7 +106,7 @@ enum Descriptor {
     DiscTitleTD,
     AudioUTOC1TD,
     AudioUTOC4TD,
-    DSITD,
+    Dstid,
     AudioContentsTD,
     RootTD,
 
@@ -119,7 +120,7 @@ impl Descriptor {
             Descriptor::DiscTitleTD => vec![0x10, 0x18, 0x01],
             Descriptor::AudioUTOC1TD => vec![0x10, 0x18, 0x02],
             Descriptor::AudioUTOC4TD => vec![0x10, 0x18, 0x03],
-            Descriptor::DSITD => vec![0x10, 0x18, 0x04],
+            Descriptor::Dstid => vec![0x10, 0x18, 0x04],
             Descriptor::AudioContentsTD => vec![0x10, 0x10, 0x01],
             Descriptor::RootTD => vec![0x10, 0x10, 0x00],
             Descriptor::DiscSubunitIdentifier => vec![0x00],
@@ -153,12 +154,14 @@ enum Status {
     Interim = 0x0f,
 }
 
-const FRAME_SIZE: Lazy<HashMap<WireFormat, usize>> = Lazy::new(|| HashMap::from([
-    (WireFormat::PCM, 2048),
-    (WireFormat::LP2, 192),
-    (WireFormat::L105kbps, 152),
-    (WireFormat::LP4, 96),
-]));
+lazy_static!{
+    static ref FRAME_SIZE: HashMap<WireFormat, usize> = HashMap::from([
+        (WireFormat::Pcm, 2048),
+        (WireFormat::LP2, 192),
+        (WireFormat::L105kbps, 152),
+        (WireFormat::LP4, 96),
+    ]);
+}
 
 impl std::convert::TryFrom<u8> for Status {
     type Error = Box<dyn Error>;
@@ -207,7 +210,7 @@ impl NetMDInterface {
         Ok(NetMDInterface { net_md_device })
     }
 
-    fn construct_multibyte(&mut self, buffer: &Vec<u8>, n: u8, offset: &mut usize) -> u32 {
+    fn construct_multibyte(&mut self, buffer: &[u8], n: u8, offset: &mut usize) -> u32 {
         let mut output: u32 = 0;
         for _ in 0..n as usize {
             output <<= 8;
@@ -369,7 +372,7 @@ impl NetMDInterface {
         while current_attempt < Self::MAX_INTERIM_READ_ATTEMPTS {
             data = match self.net_md_device.read_reply(None) {
                 Ok(reply) => reply,
-                Err(error) => return Err(error.into()),
+                Err(error) => return Err(error),
             };
 
             let status = match Status::try_from(data[0]) {
@@ -819,8 +822,8 @@ impl NetMDInterface {
 
         if title.ends_with(delim) {
             let first_entry = title.split(delim).collect::<Vec<&str>>()[0];
-            if first_entry.starts_with(title_marker) {
-                title = first_entry[title_marker.len()..].to_string();
+            if let Some(stripped_title) = first_entry.strip_prefix(title_marker) {
+                title = stripped_title.to_string();
             } else {
                 title = String::new();
             }
@@ -842,19 +845,19 @@ impl NetMDInterface {
         let mut full_width_group_list = raw_full_title.split("／／");
 
         for (i, group) in group_list.enumerate() {
-            if group == "" {
+            if group.is_empty() {
                 continue;
             }
 
-            if group.starts_with("0;") || group.find(";") == None || raw_title.find("//") == None {
+            if group.starts_with("0;") || group.find(';').is_none() || !raw_title.contains("//") {
                 continue;
             }
 
-            let track_range: String = match group.split_once(";") {
+            let track_range: String = match group.split_once(';') {
                 Some(string) => string.0.to_string(),
                 None => return Err("No groups were found".into()),
             };
-            if track_range.len() == 0 {
+            if track_range.is_empty() {
                 continue;
             }
 
@@ -865,15 +868,15 @@ impl NetMDInterface {
             let full_width_group_name = full_width_group_list
                 .find(|n| n.starts_with(&full_width_range))
                 .unwrap()
-                .split_once("；")
+                .split_once('；')
                 .unwrap()
                 .1;
 
             let mut track_minmax: Vec<&str> = Vec::new();
-            if track_range.find("-") != None {
-                track_minmax = track_range.split("-").collect();
+            if track_range.find('-').is_some() {
+                track_minmax = track_range.split('-').collect();
             } else {
-                track_minmax.push(&track_range.as_str());
+                track_minmax.push(track_range.as_str());
             }
 
             let (track_min, mut track_max) = (
@@ -881,7 +884,7 @@ impl NetMDInterface {
                 track_minmax[1].parse::<u16>().unwrap(),
             );
 
-            track_max = u16::min(track_max, track_count as u16);
+            track_max = u16::min(track_max, track_count);
 
             // TODO: Do some error handling here
             assert!(track_min <= track_max);
@@ -904,7 +907,7 @@ impl NetMDInterface {
             ));
         }
 
-        for i in 0..track_count as u16 {
+        for i in 0..track_count {
             if !track_dict.contains_key(&i) {
                 result.insert(0, (None, None, Vec::from([i])))
             }
@@ -1031,23 +1034,18 @@ impl NetMDInterface {
             },
         };
 
-        let old_len: u16;
         let new_len = new_title.len();
 
-        match self.track_title(track, wchar) {
+        let old_len: u16 = match self.track_title(track, wchar) {
             Ok(current_title) => {
                 if title == current_title {
                     return Ok(())
                 }
-                old_len = length_after_encoding_to_jis(&current_title) as u16;
+                length_after_encoding_to_jis(&current_title) as u16
             },
-            Err(error) if error.to_string() == "Rejected" => {
-                old_len = 0;
-            },
-            Err(error) => {
-                return Err(error);
-            }
-        }
+            Err(error) if error.to_string() == "Rejected" => 0,
+            Err(error) => return Err(error)
+        };
 
         self.change_descriptor_state(&descriptor, &DescriptorAction::OpenWrite);
         let mut query = format_query(
@@ -1114,7 +1112,7 @@ impl NetMDInterface {
 
         self.change_descriptor_state(&Descriptor::AudioContentsTD, &DescriptorAction::Close);
 
-        return Ok(res[0].to_vec().unwrap());
+        Ok(res[0].to_vec().unwrap())
     }
 
     /// Gets the length of tracks as a `std::time::Duration` from a set
@@ -1327,7 +1325,7 @@ impl NetMDInterface {
         let chainlen = keychain.len();
         let databytes = 16 + 16 * chainlen + 24;
 
-        if depth < 1 || depth > 63 {
+        if !(1..=63).contains(&depth) {
             return Err("Supplied depth is invalid".into());
         }
         if ekbsignature.len() != 24 {
@@ -1395,7 +1393,7 @@ impl NetMDInterface {
             return Err("Supplied Session Key length wrong".into());
         }
 
-        let message = vec![vec![1, 1, 1, 1], contentid, keyenckey].concat();
+        let message = [vec![1, 1, 1, 1], contentid, keyenckey].concat();
 
         let mc = MagicCrypt::new(
             hex_session_key,
@@ -1474,19 +1472,17 @@ impl NetMDInterface {
         // Sharps are slow
         sleep(Duration::from_millis(200));
 
-        let mut packet_count = 0;
-        let mut written_bytes = 0;
-        for (key, iv, data) in packets {
+        let mut _written_bytes = 0;
+        for (packet_count, (key, iv, data)) in packets.into_iter().enumerate(){
             let mut binpack;
             if packet_count == 0 {
                 let packed_length: Vec<u8> = pkt_size.to_le_bytes().to_vec();
-                binpack = vec![vec![0, 0, 0, 0], packed_length, key, iv, data.clone()].concat();
+                binpack = [vec![0, 0, 0, 0], packed_length, key, iv, data.clone()].concat();
             } else {
                 binpack = data.clone();
             }
             self.net_md_device.write_bulk(&mut binpack)?;
-            packet_count += 1;
-            written_bytes += data.len();
+            _written_bytes += data.len();
         }
 
         reply = self.read_reply(false)?;
@@ -1501,8 +1497,8 @@ impl NetMDInterface {
 
         let reply_data = String::from_utf8(mc.decrypt_bytes_to_bytes(&res[1].to_vec().unwrap())?).unwrap().chars().collect::<Vec<char>>();
 
-        let part1 = String::from_iter(reply_data.clone()[0..8].into_iter());
-        let part2 = String::from_iter(reply_data.clone()[12..32].into_iter());
+        let part1 = String::from_iter(reply_data.clone()[0..8].iter());
+        let part2 = String::from_iter(reply_data.clone()[12..32].iter());
 
         Ok((res[0].to_i64().unwrap(), part1, part2))
     }
@@ -1539,7 +1535,7 @@ pub fn retailmac(
 ) -> Result<(), Box<dyn Error>> {
     let subkey_a = key[0..8].to_vec();
     let beginning = value[0..value.len() - 8].to_vec();
-    let end = value[value.len() - 8..].to_vec();
+    let _end = value[value.len() - 8..].to_vec();
 
     let mc = MagicCrypt::new(
         String::from_utf8(subkey_a).unwrap(),
@@ -1548,17 +1544,19 @@ pub fn retailmac(
     );
     let step1 = mc.encrypt_bytes_to_bytes(&beginning);
 
-    let iv2 = String::from_utf8(step1);
+    let _iv2 = String::from_utf8(step1);
 
     Ok(())
 }
 
-const DISC_FOR_WIRE: Lazy<HashMap<WireFormat, DiscFormat>> = Lazy::new(|| HashMap::from([
-    (WireFormat::PCM, DiscFormat::SPStereo),
-    (WireFormat::LP2, DiscFormat::LP2),
-    (WireFormat::L105kbps, DiscFormat::LP2),
-    (WireFormat::LP4, DiscFormat::LP4),
-]));
+lazy_static!{
+    static ref DISC_FOR_WIRE: HashMap<WireFormat, DiscFormat> = HashMap::from([
+        (WireFormat::Pcm, DiscFormat::SPStereo),
+        (WireFormat::LP2, DiscFormat::LP2),
+        (WireFormat::L105kbps, DiscFormat::LP2),
+        (WireFormat::LP4, DiscFormat::LP4),
+    ]);
+}
 
 struct EKBOpenSource {
 }

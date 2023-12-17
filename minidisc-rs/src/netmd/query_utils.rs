@@ -1,26 +1,23 @@
 use crate::netmd::utils;
-use once_cell::sync::Lazy;
+use lazy_static::lazy_static;
 use std::collections::hash_map::HashMap;
 use std::error::Error;
 
-/**
-    %b, w, d, q - explained above (can have endiannes overriden by '>' and '<' operators, f. ex. %>d %<q)
-    %s - Uint8Array preceded by 2 bytes of length
-    %x - Uint8Array preceded by 2 bytes of length
-    %z - Uint8Array preceded by 1 byte of length
-    %* - raw Uint8Array
-    %B - BCD-encoded 1-byte number
-    %W - BCD-encoded 2-byte number
-*/
-
-const FORMAT_TYPE_LEN_DICT: Lazy<HashMap<char, i32>> = Lazy::new(|| {
-    HashMap::from([
+lazy_static!{
+    /// %b, w, d, q - explained above (can have endiannes overriden by '>' and '<' operators, f. ex. %>d %<q)
+    /// %s - Uint8Array preceded by 2 bytes of length
+    /// %x - Uint8Array preceded by 2 bytes of length
+    /// %z - Uint8Array preceded by 1 byte of length
+    /// %* - raw Uint8Array
+    /// %B - BCD-encoded 1-byte number
+    /// %W - BCD-encoded 2-byte number
+    static ref FORMAT_TYPE_LEN_DICT: HashMap<char, i32> = HashMap::from([
         ('b', 1), // byte
         ('w', 2), // word
         ('d', 4), // doubleword
         ('q', 8), // quadword
-    ])
-});
+    ]);
+}
 
 const DEBUG: bool = false;
 
@@ -108,7 +105,7 @@ pub fn format_query(
                         result.push(0);
                     }
                 }
-                character if character == '*' => {
+                '*' => {
                     let mut array_value = arg_stack.next().unwrap().to_vec().unwrap();
                     result.append(&mut array_value);
                 }
@@ -215,17 +212,17 @@ pub fn scan_query(
                 character if character == '*' || character == '#' => {
                     let mut result_buffer: Vec<u8> = Vec::new();
                     let temp_stack = input_stack.clone();
-                    for entry in temp_stack.take(initial_length as usize) {
+                    for entry in temp_stack.take(initial_length) {
                         result_buffer.push(entry);
                         input_stack.next();
                     }
                     result.push(QueryValue::Array(result_buffer));
                 }
-                character if character == 'B' => {
+                'B' => {
                     let v = input_stack.next().unwrap();
                     result.push(QueryValue::Number(utils::bcd_to_int(v as i32) as i64));
                 }
-                character if character == 'W' => {
+                'W' => {
                     let v = (input_stack.next().unwrap() as i32) << 8
                         | input_stack.next().unwrap() as i32;
                     result.push(QueryValue::Number(utils::bcd_to_int(v) as i64));
