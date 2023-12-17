@@ -9,6 +9,7 @@ use std::collections::HashMap;
 use std::error::Error;
 use magic_crypt::{MagicCrypt, SecureBit, MagicCryptTrait, new_magic_crypt};
 use hex;
+use once_cell::sync::Lazy;
 use std::thread::sleep;
 use std::time::Duration;
 use webusb;
@@ -35,6 +36,7 @@ pub enum DiscFormat {
     SPStereo = 6,
 }
 
+#[derive(Clone, Hash, Eq, PartialEq)]
 enum WireFormat {
     PCM = 0x00,
     L105kbps = 0x90,
@@ -150,6 +152,13 @@ enum Status {
     Changed = 0x0d,
     Interim = 0x0f,
 }
+
+const FRAME_SIZE: Lazy<HashMap<WireFormat, usize>> = Lazy::new(|| HashMap::from([
+    (WireFormat::PCM, 2048),
+    (WireFormat::LP2, 192),
+    (WireFormat::L105kbps, 152),
+    (WireFormat::LP4, 96),
+]));
 
 impl std::convert::TryFrom<u8> for Status {
     type Error = Box<dyn Error>;
@@ -1544,8 +1553,14 @@ pub fn retailmac(
     Ok(())
 }
 
-struct EKBOpenSource {
+const DISC_FOR_WIRE: Lazy<HashMap<WireFormat, DiscFormat>> = Lazy::new(|| HashMap::from([
+    (WireFormat::PCM, DiscFormat::SPStereo),
+    (WireFormat::LP2, DiscFormat::LP2),
+    (WireFormat::L105kbps, DiscFormat::LP2),
+    (WireFormat::LP4, DiscFormat::LP4),
+]));
 
+struct EKBOpenSource {
 }
 
 impl EKBOpenSource {
@@ -1577,14 +1592,66 @@ impl EKBOpenSource {
     */
 }
 
+#[derive(Clone)]
 struct MDTrack {
     title: String,
     format: WireFormat,
     data: Vec<u8>,
     chunk_size: i32,
     full_width_title: Option<String>,
+    encrypt_packets_iterator: EncryptPacketsIterator
+}
+
+#[derive(Clone)]
+struct EncryptPacketsIterator {
+    kek: Vec<u8>,
+    frame_size: i32,
+    data: Vec<u8>,
+    chunk_size: i32
 }
 
 impl MDTrack {
+    pub fn full_width_title(self) -> String {
+        self.full_width_title.unwrap_or("".to_string())
+    }
+
+    pub fn title(&self) -> String {
+        self.title.clone()
+    }
+
+    pub fn data_format(&self) -> WireFormat {
+        self.format.clone()
+    }
+
+    pub fn frame_count(&self) -> usize {
+        self.total_size() / self.frame_size()
+    }
+
+    pub fn frame_size(&self) -> usize {
+        *FRAME_SIZE.get(&self.format).unwrap()
+    }
+
+    pub fn chunk_size(self) -> i32 {
+        self.chunk_size
+    }
+
+    pub fn total_size(&self) -> usize {
+        let frame_size = self.frame_size();
+        let mut len = self.data.len();
+        if len % frame_size != 0 {
+            len = len + (frame_size - (len % frame_size));
+        }
+        len
+    }
+
+    pub fn content_id() -> [u8; 20] {
+        [0x01, 0x0f, 0x50, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x48,
+         0xa2, 0x8d, 0x3e, 0x1a, 0x3b, 0x0c, 0x44, 0xaf, 0x2f, 0xa0]
+    }
+
+    pub fn get_kek() -> [u8; 8] {
+        [0x14, 0xe3, 0x83, 0x4e, 0xe2, 0xd3, 0xcc, 0xa5]
+    }
+
 
 }

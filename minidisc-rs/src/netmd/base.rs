@@ -12,9 +12,9 @@ const BULK_READ_ENDPOINT: u8 = 0x81;
 pub const CHUNKSIZE: u32 = 0x10000;
 
 // TODO: I think this sucks, figure out a better way
-pub static DEVICE_IDS: Lazy<Vec<DeviceId>> = Lazy::new(|| {
-    nofmt::pls! {
-        Vec::from([
+pub static DEVICE_IDS: Lazy<Box<[DeviceId]>> = Lazy::new(|| {
+    nofmt::pls! {Box::new(
+        [
             DeviceId {vendor_id: 0x04dd, product_id: 0x7202, name: Some(String::from("Sharp IM-MT899H"))},
             DeviceId {vendor_id: 0x04dd, product_id: 0x9013, name: Some(String::from("Sharp IM-DR400"))},
             DeviceId {vendor_id: 0x04dd, product_id: 0x9014, name: Some(String::from("Sharp IM-DR80"))},
