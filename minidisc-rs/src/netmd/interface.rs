@@ -12,7 +12,7 @@ use hex;
 
 use std::thread::sleep;
 use std::time::Duration;
-use webusb;
+use yusb;
 use lazy_static::lazy_static;
 
 #[derive(Copy, Clone)]
@@ -204,7 +204,7 @@ impl NetMDInterface {
     const INTERIM_RESPONSE_RETRY_INTERVAL: u32 = 100;
 
     pub fn new(
-        device: webusb::UsbDevice,
+        device: yusb::Device,
     ) -> Result<Self, Box<dyn Error>> {
         let net_md_device = base::NetMD::new(device).unwrap();
         Ok(NetMDInterface { net_md_device })
