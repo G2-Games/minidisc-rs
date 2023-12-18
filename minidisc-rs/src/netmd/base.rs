@@ -13,8 +13,8 @@ const BULK_WRITE_ENDPOINT: u8 = 0x02;
 const BULK_READ_ENDPOINT: u8 = 0x81;
 
 pub static DEVICE_IDS: Lazy<Box<[DeviceId]>> = Lazy::new(|| {
-    nofmt::pls! {Box::new(
-        [
+    nofmt::pls! {
+        Box::new([
             DeviceId {vendor_id: 0x04dd, product_id: 0x7202, name: Some(String::from("Sharp IM-MT899H"))},
             DeviceId {vendor_id: 0x04dd, product_id: 0x9013, name: Some(String::from("Sharp IM-DR400"))},
             DeviceId {vendor_id: 0x04dd, product_id: 0x9014, name: Some(String::from("Sharp IM-DR80"))},
@@ -94,7 +94,7 @@ pub struct NetMD {
 impl NetMD {
     const READ_REPLY_RETRY_INTERVAL: u32 = 10;
 
-    /// Creates a new `NetMD` struct
+    /// Creates a new interface to a NetMD device
     pub fn new(device: Device) -> Result<Self, Box<dyn Error>> {
         let descriptor = device.device_descriptor()?;
 
@@ -125,17 +125,17 @@ impl NetMD {
         })
     }
 
-    /// Gets the device name from the struct
+    /// Gets the device name, this is limited to the devices in the list
     pub fn device_name(&self) -> &Option<String> {
         &self.model.name
     }
 
-    /// Gets the vendor id from the struct
+    /// Gets the vendor id
     pub fn vendor_id(&self) -> &u16 {
         &self.model.vendor_id
     }
 
-    /// Gets the product id from the struct
+    /// Gets the product id
     pub fn product_id(&self) -> &u16 {
         &self.model.product_id
     }
