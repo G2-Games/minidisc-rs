@@ -9,3 +9,4 @@ pub mod interface;
 mod query_utils;
 mod utils;
 mod mappings;
+mod commands;

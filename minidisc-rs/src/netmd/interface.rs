@@ -7,6 +7,7 @@ use crate::netmd::utils::{
 use encoding_rs::*;
 use hex;
 use magic_crypt::{new_magic_crypt, MagicCrypt, MagicCryptTrait, SecureBit};
+use rand::RngCore;
 use std::collections::HashMap;
 use std::error::Error;
 
@@ -442,7 +443,7 @@ impl NetMDInterface {
         Ok(())
     }
 
-    fn acquire(&mut self) -> Result<(), Box<dyn Error>> {
+    pub fn acquire(&mut self) -> Result<(), Box<dyn Error>> {
         let mut query = format_query("ff 010c ffff ffff ffff ffff ffff ffff".to_string(), vec![])?;
         let reply = self.send_query(&mut query, false, false)?;
 
@@ -451,7 +452,7 @@ impl NetMDInterface {
         Ok(())
     }
 
-    fn release(&mut self) -> Result<(), Box<dyn Error>> {
+    pub fn release(&mut self) -> Result<(), Box<dyn Error>> {
         let mut query = format_query("ff 0100 ffff ffff ffff ffff ffff ffff".to_string(), vec![])?;
 
         let reply = self.send_query(&mut query, false, false)?;
@@ -1341,9 +1342,9 @@ impl NetMDInterface {
     pub fn send_key_data(
         &mut self,
         ekbid: i32,
-        keychain: Vec<[u8; 16]>,
+        keychain: [[u8; 16]; 2],
         depth: i32,
-        ekbsignature: Vec<u8>,
+        ekbsignature: [u8; 24],
     ) -> Result<Vec<u8>, Box<dyn Error>> {
         let chainlen = keychain.len();
         let databytes = 16 + 16 * chainlen + 24;
@@ -1366,7 +1367,7 @@ impl NetMDInterface {
                 QueryValue::Number(depth as i64),
                 QueryValue::Number(ekbid as i64),
                 QueryValue::Array(keychains),
-                QueryValue::Array(ekbsignature),
+                QueryValue::Array(ekbsignature.to_vec()),
             ],
         )?;
 
@@ -1581,39 +1582,43 @@ lazy_static! {
     ]);
 }
 
-struct EKBOpenSource {}
+pub struct EKBData {
+    chains: [[u8; 16]; 2],
+    depth: i32,
+    signature: [u8; 24],
+}
+
+pub struct EKBOpenSource {}
 
 impl EKBOpenSource {
-    fn root_key(&mut self) -> [u8; 16] {
+    pub fn root_key(&self) -> [u8; 16] {
         [
             0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xf0, 0x0f, 0xed, 0xcb, 0xa9, 0x87, 0x65,
             0x43, 0x21,
         ]
     }
 
-    fn ekb_id(&mut self) -> i32 {
+    pub fn ekb_id(&self) -> i32 {
         0x26422642
     }
 
-    /* What's this for?
-    ekb_data_for_leaf_id(): [Uint8Array[], number, Uint8Array] {
-        return [
-            [
-                new Uint8Array([0x25, 0x45, 0x06, 0x4d, 0xea, 0xca, 0x14, 0xf9, 0x96, 0xbd, 0xc8, 0xa4, 0x06, 0xc2, 0x2b, 0x81]),
-                new Uint8Array([0xfb, 0x60, 0xbd, 0xdd, 0x0d, 0xbc, 0xab, 0x84, 0x8a, 0x00, 0x5e, 0x03, 0x19, 0x4d, 0x3e, 0xda]),
+    pub fn ekb_data_for_leaf_id(&self) -> EKBData {
+        EKBData {
+            chains: [
+                [0x25, 0x45, 0x06, 0x4d, 0xea, 0xca, 0x14, 0xf9, 0x96, 0xbd, 0xc8, 0xa4, 0x06, 0xc2, 0x2b, 0x81],
+                [0xfb, 0x60, 0xbd, 0xdd, 0x0d, 0xbc, 0xab, 0x84, 0x8a, 0x00, 0x5e, 0x03, 0x19, 0x4d, 0x3e, 0xda],
             ],
-            9,
-            new Uint8Array([
+            depth: 9,
+            signature: [
                 0x8f, 0x2b, 0xc3, 0x52, 0xe8, 0x6c, 0x5e, 0xd3, 0x06, 0xdc, 0xae, 0x18,
-                0xd2, 0xf3, 0x8c, 0x7f, 0x89, 0xb5, 0xe1, 0x85, 0x55, 0xa1, 0x05, 0xea
-            ])
-        ];
+                0xd2, 0xf3, 0x8c, 0x7f, 0x89, 0xb5, 0xe1, 0x85, 0x55, 0xa1, 0x05, 0xea,
+            ],
+        }
     }
-    */
 }
 
 #[derive(Clone)]
-struct MDTrack {
+pub struct MDTrack {
     title: String,
     format: WireFormat,
     data: Vec<u8>,
@@ -1623,7 +1628,7 @@ struct MDTrack {
 }
 
 #[derive(Clone)]
-struct EncryptPacketsIterator {
+pub struct EncryptPacketsIterator {
     kek: Vec<u8>,
     frame_size: i32,
     data: Vec<u8>,
@@ -1673,5 +1678,26 @@ impl MDTrack {
 
     pub fn get_kek() -> [u8; 8] {
         [0x14, 0xe3, 0x83, 0x4e, 0xe2, 0xd3, 0xcc, 0xa5]
+    }
+}
+
+pub struct MDSession {
+    md: NetMDInterface,
+    ekb_object: EKBOpenSource,
+    hex_session_key: String,
+}
+
+impl MDSession {
+    pub fn init(&mut self) -> Result<(), Box<dyn Error>>{
+        self.md.enter_secure_session()?;
+        self.md.leaf_id()?;
+
+        let ekb = self.ekb_object.ekb_data_for_leaf_id();
+        self.md.send_key_data(self.ekb_object.ekb_id(), ekb.chains, ekb.depth, ekb.signature)?;
+        let mut nonce = vec![0u8, 8];
+        rand::thread_rng().fill_bytes(&mut nonce);
+
+        // TODO
+        Ok(())
     }
 }

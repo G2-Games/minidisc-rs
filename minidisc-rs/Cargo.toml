@@ -25,7 +25,9 @@ regex = "1.10.2"
 lazy_static = "1.4.0"
 nusb = "0.1.4"
 futures-lite = "2.2.0"
-
+num-derive = "0.3.3"
+num-traits = "0.2.14"
+rand = "0.8.5"
 
 [lib]
 crate-type = ["cdylib", "rlib"]
