@@ -1,14 +1,16 @@
 use nofmt;
 use once_cell::sync::Lazy;
 use std::error::Error;
-use yusb::{Device, DeviceHandle, Direction, Recipient, RequestType};
+use std::time::Duration;
 
-const DEFAULT_TIMEOUT: std::time::Duration = std::time::Duration::new(9999999, 0);
+// USB stuff
+use nusb::transfer::{Control, ControlType, Recipient, RequestBuffer};
+use nusb::{Device, DeviceInfo, Interface};
 
-const STANDARD_SEND: u8 =
-    yusb::request_type(Direction::Out, RequestType::Vendor, Recipient::Interface);
-const STANDARD_RECV: u8 =
-    yusb::request_type(Direction::In, RequestType::Vendor, Recipient::Interface);
+use futures_lite::future::block_on;
+
+const DEFAULT_TIMEOUT: Duration = Duration::new(9999999, 0);
+
 const BULK_WRITE_ENDPOINT: u8 = 0x02;
 const BULK_READ_ENDPOINT: u8 = 0x81;
 
@@ -86,7 +88,8 @@ pub struct DeviceId {
 
 /// A connection to a NetMD device
 pub struct NetMD {
-    device: DeviceHandle,
+    usb_device: Device,
+    usb_interface: Interface,
     model: DeviceId,
     status: Option<Status>,
 }
@@ -95,12 +98,10 @@ impl NetMD {
     const READ_REPLY_RETRY_INTERVAL: u32 = 10;
 
     /// Creates a new interface to a NetMD device
-    pub fn new(device: Device) -> Result<Self, Box<dyn Error>> {
-        let descriptor = device.device_descriptor()?;
-
+    pub fn new(device_info: DeviceInfo) -> Result<Self, Box<dyn Error>> {
         let mut model = DeviceId {
-            vendor_id: descriptor.vendor_id(),
-            product_id: descriptor.product_id(),
+            vendor_id: device_info.vendor_id(),
+            product_id: device_info.product_id(),
             name: None,
         };
 
@@ -118,8 +119,12 @@ impl NetMD {
             Some(_) => (),
         }
 
+        let usb_device = device_info.open()?;
+        let usb_interface = usb_device.claim_interface(0)?;
+
         Ok(Self {
-            device: device.open()?,
+            usb_device,
+            usb_interface,
             model,
             status: None,
         })
@@ -146,11 +151,14 @@ impl NetMD {
         // Create an array to store the result of the poll
         let mut poll_result = [0u8; 4];
 
-        let _status = match self.device.read_control(
-            STANDARD_RECV,
-            0x01,
-            0,
-            0,
+        let _status = match self.usb_interface.control_in_blocking(
+            Control {
+                control_type: ControlType::Vendor,
+                recipient: Recipient::Interface,
+                request: 0x01,
+                value: 0,
+                index: 0,
+            },
             &mut poll_result,
             DEFAULT_TIMEOUT,
         ) {
@@ -190,10 +198,17 @@ impl NetMD {
             true => 0xff,
         };
 
-        match self
-            .device
-            .write_control(STANDARD_SEND, request, 0, 0, &command, DEFAULT_TIMEOUT)
-        {
+        match self.usb_interface.control_out_blocking(
+            Control {
+                control_type: ControlType::Vendor,
+                recipient: Recipient::Interface,
+                request,
+                value: 0,
+                index: 0,
+            },
+            &command,
+            DEFAULT_TIMEOUT,
+        ) {
             Ok(_) => Ok(()),
             Err(error) => Err(error.into()),
         }
@@ -242,10 +257,17 @@ impl NetMD {
         let mut buf: Vec<u8> = vec![0; length as usize];
 
         // Create a buffer to fill with the result
-        match self
-            .device
-            .read_control(STANDARD_RECV, request, 0, 0, &mut buf, DEFAULT_TIMEOUT)
-        {
+        match self.usb_interface.control_in_blocking(
+            Control {
+                control_type: ControlType::Vendor,
+                recipient: Recipient::Interface,
+                request,
+                value: 0,
+                index: 0,
+            },
+            &mut buf,
+            DEFAULT_TIMEOUT,
+        ) {
             Ok(_) => Ok(buf),
             Err(error) => Err(error.into()),
         }
@@ -253,7 +275,11 @@ impl NetMD {
 
     // Default chunksize should be 0x10000
     // TODO: Make these Async eventually
-    pub fn read_bulk(&mut self, length: u32, chunksize: u32) -> Result<Vec<u8>, Box<dyn Error>> {
+    pub fn read_bulk(
+        &mut self,
+        length: usize,
+        chunksize: usize,
+    ) -> Result<Vec<u8>, Box<dyn Error>> {
         let result = self.read_bulk_to_array(length, chunksize)?;
 
         Ok(result)
@@ -261,8 +287,8 @@ impl NetMD {
 
     pub fn read_bulk_to_array(
         &mut self,
-        length: u32,
-        chunksize: u32,
+        length: usize,
+        chunksize: usize,
     ) -> Result<Vec<u8>, Box<dyn Error>> {
         let mut final_result: Vec<u8> = Vec::new();
         let mut done = 0;
@@ -270,27 +296,26 @@ impl NetMD {
         while done < length {
             let to_read = std::cmp::min(chunksize, length - done);
             done -= to_read;
-            let mut buffer: Vec<u8> = vec![0; to_read as usize];
+            let buffer = RequestBuffer::new(to_read);
 
-            match self
-                .device
-                .read_bulk(BULK_READ_ENDPOINT, &mut buffer, DEFAULT_TIMEOUT)
+            let res = match block_on(self.usb_interface.bulk_in(BULK_READ_ENDPOINT, buffer))
+                .into_result()
             {
                 Ok(result) => result,
                 Err(error) => return Err(format!("USB error: {:?}", error).into()),
             };
 
-            final_result.extend_from_slice(&buffer);
+            final_result.extend_from_slice(&res);
         }
 
         Ok(final_result)
     }
 
-    pub fn write_bulk(&mut self, data: &mut [u8]) -> Result<usize, Box<dyn Error>> {
-        let written = self
-            .device
-            .write_bulk(BULK_WRITE_ENDPOINT, data, DEFAULT_TIMEOUT)?;
-
-        Ok(written)
+    pub fn write_bulk(&mut self, data: Vec<u8>) -> Result<usize, Box<dyn Error>> {
+        Ok(
+            block_on(self.usb_interface.bulk_out(BULK_WRITE_ENDPOINT, data))
+                .into_result()?
+                .actual_length(),
+        )
     }
 }

@@ -1,19 +1,18 @@
 use crate::netmd::base;
 use crate::netmd::query_utils::{format_query, scan_query, QueryValue};
 use crate::netmd::utils::{
-    half_width_to_full_width_range, length_after_encoding_to_jis,
-    sanitize_full_width_title, sanitize_half_width_title, time_to_duration
+    half_width_to_full_width_range, length_after_encoding_to_jis, sanitize_full_width_title,
+    sanitize_half_width_title, time_to_duration,
 };
 use encoding_rs::*;
+use hex;
+use magic_crypt::{new_magic_crypt, MagicCrypt, MagicCryptTrait, SecureBit};
 use std::collections::HashMap;
 use std::error::Error;
-use magic_crypt::{MagicCrypt, SecureBit, MagicCryptTrait, new_magic_crypt};
-use hex;
 
+use lazy_static::lazy_static;
 use std::thread::sleep;
 use std::time::Duration;
-use yusb;
-use lazy_static::lazy_static;
 
 #[derive(Copy, Clone)]
 enum Action {
@@ -154,7 +153,7 @@ enum Status {
     Interim = 0x0f,
 }
 
-lazy_static!{
+lazy_static! {
     static ref FRAME_SIZE: HashMap<WireFormat, usize> = HashMap::from([
         (WireFormat::Pcm, 2048),
         (WireFormat::LP2, 192),
@@ -203,9 +202,7 @@ impl NetMDInterface {
     const MAX_INTERIM_READ_ATTEMPTS: u8 = 4;
     const INTERIM_RESPONSE_RETRY_INTERVAL: u32 = 100;
 
-    pub fn new(
-        device: yusb::Device,
-    ) -> Result<Self, Box<dyn Error>> {
+    pub fn new(device: nusb::DeviceInfo) -> Result<Self, Box<dyn Error>> {
         let net_md_device = base::NetMD::new(device).unwrap();
         Ok(NetMDInterface { net_md_device })
     }
@@ -446,10 +443,7 @@ impl NetMDInterface {
     }
 
     fn acquire(&mut self) -> Result<(), Box<dyn Error>> {
-        let mut query = format_query(
-            "ff 010c ffff ffff ffff ffff ffff ffff".to_string(),
-            vec![],
-        )?;
+        let mut query = format_query("ff 010c ffff ffff ffff ffff ffff ffff".to_string(), vec![])?;
         let reply = self.send_query(&mut query, false, false)?;
 
         scan_query(reply, "ff 010c ffff ffff ffff ffff ffff ffff".to_string())?;
@@ -458,10 +452,7 @@ impl NetMDInterface {
     }
 
     fn release(&mut self) -> Result<(), Box<dyn Error>> {
-        let mut query = format_query(
-            "ff 0100 ffff ffff ffff ffff ffff ffff".to_string(),
-            vec![],
-        )?;
+        let mut query = format_query("ff 0100 ffff ffff ffff ffff ffff ffff".to_string(), vec![])?;
 
         let reply = self.send_query(&mut query, false, false)?;
 
@@ -709,8 +700,7 @@ impl NetMDInterface {
     // looks like it actually might be a 16 bit integer
     pub fn disc_flags(&mut self) -> Result<u8, Box<dyn Error>> {
         self.change_descriptor_state(&Descriptor::RootTD, &DescriptorAction::OpenRead);
-        let mut query =
-            format_query("1806 01101000 ff00 0001000b".to_string(), vec![]).unwrap();
+        let mut query = format_query("1806 01101000 ff00 0001000b".to_string(), vec![]).unwrap();
 
         let reply = self.send_query(&mut query, false, false)?;
 
@@ -725,11 +715,8 @@ impl NetMDInterface {
     pub fn track_count(&mut self) -> Result<u16, Box<dyn Error>> {
         self.change_descriptor_state(&Descriptor::AudioContentsTD, &DescriptorAction::OpenRead);
 
-        let mut query = format_query(
-            "1806 02101001 3000 1000 ff00 00000000".to_string(),
-            vec![],
-        )
-        .unwrap();
+        let mut query =
+            format_query("1806 02101001 3000 1000 ff00 00000000".to_string(), vec![]).unwrap();
 
         let reply = self.send_query(&mut query, false, false)?;
 
@@ -833,7 +820,9 @@ impl NetMDInterface {
     }
 
     /// Gets all groups on the disc
-    pub fn track_group_list(&mut self) -> Result<Vec<(Option<String>, Option<String>, Vec<u16>)>, Box<dyn Error>> {
+    pub fn track_group_list(
+        &mut self,
+    ) -> Result<Vec<(Option<String>, Option<String>, Vec<u16>)>, Box<dyn Error>> {
         let raw_title = self._disc_title(false)?;
         let group_list = raw_title.split("//");
         let mut track_dict: HashMap<u16, (String, u16)> = HashMap::new();
@@ -917,7 +906,11 @@ impl NetMDInterface {
     }
 
     /// Gets a list of track titles from a set
-    pub fn track_titles(&mut self, tracks: Vec<u16>, wchar: bool) -> Result<Vec<String>, Box<dyn Error>> {
+    pub fn track_titles(
+        &mut self,
+        tracks: Vec<u16>,
+        wchar: bool,
+    ) -> Result<Vec<String>, Box<dyn Error>> {
         let wchar_value = match wchar {
             true => 3,
             false => 2,
@@ -934,7 +927,10 @@ impl NetMDInterface {
         for i in tracks {
             let mut query = format_query(
                 "1806 022018%b %w 3000 0a00 ff00 00000000".to_string(),
-                vec![QueryValue::Number(wchar_value), QueryValue::Number(i as i64)],
+                vec![
+                    QueryValue::Number(wchar_value),
+                    QueryValue::Number(i as i64),
+                ],
             )
             .unwrap();
 
@@ -946,10 +942,12 @@ impl NetMDInterface {
             )
             .unwrap();
 
-            track_titles.push(encoding_rs::SHIFT_JIS
-                .decode(&res[0].to_vec().unwrap())
-                .0
-                .into())
+            track_titles.push(
+                encoding_rs::SHIFT_JIS
+                    .decode(&res[0].to_vec().unwrap())
+                    .0
+                    .into(),
+            )
         }
 
         self.change_descriptor_state(&descriptor_type, &DescriptorAction::Close);
@@ -962,7 +960,7 @@ impl NetMDInterface {
         let title = match self.track_titles([track].into(), wchar) {
             Ok(titles) => titles[0].clone(),
             Err(error) if error.to_string() == "Rejected" => String::new(),
-            Err(error) => return Err(error)
+            Err(error) => return Err(error),
         };
         Ok(title)
     }
@@ -981,11 +979,11 @@ impl NetMDInterface {
             true => {
                 new_title = sanitize_full_width_title(&title, false);
                 1
-            },
+            }
             false => {
                 new_title = sanitize_half_width_title(title);
                 0
-            },
+            }
         };
 
         let new_len = new_title.len();
@@ -1021,17 +1019,22 @@ impl NetMDInterface {
     }
 
     /// Sets the title of a track
-    pub fn set_track_title(&mut self, track: u16, title: String, wchar: bool) -> Result<(), Box<dyn Error>> {
+    pub fn set_track_title(
+        &mut self,
+        track: u16,
+        title: String,
+        wchar: bool,
+    ) -> Result<(), Box<dyn Error>> {
         let new_title: Vec<u8>;
         let (wchar_value, descriptor) = match wchar {
             true => {
                 new_title = sanitize_full_width_title(&title, false);
                 (3, Descriptor::AudioUTOC4TD)
-            },
+            }
             false => {
                 new_title = sanitize_half_width_title(title.clone());
                 (2, Descriptor::AudioUTOC1TD)
-            },
+            }
         };
 
         let new_len = new_title.len();
@@ -1039,12 +1042,12 @@ impl NetMDInterface {
         let old_len: u16 = match self.track_title(track, wchar) {
             Ok(current_title) => {
                 if title == current_title {
-                    return Ok(())
+                    return Ok(());
                 }
                 length_after_encoding_to_jis(&current_title) as u16
-            },
+            }
             Err(error) if error.to_string() == "Rejected" => 0,
-            Err(error) => return Err(error)
+            Err(error) => return Err(error),
         };
 
         self.change_descriptor_state(&descriptor, &DescriptorAction::OpenWrite);
@@ -1060,7 +1063,10 @@ impl NetMDInterface {
         )?;
         let reply = self.send_query(&mut query, false, false)?;
 
-        let _ = scan_query(reply, "1807 022018%? %?%? 3000 0a00 5000 %?%? 0000 %?%?".to_string());
+        let _ = scan_query(
+            reply,
+            "1807 022018%? %?%? 3000 0a00 5000 %?%? 0000 %?%?".to_string(),
+        );
         self.change_descriptor_state(&descriptor, &DescriptorAction::Close);
 
         Ok(())
@@ -1070,9 +1076,7 @@ impl NetMDInterface {
     pub fn erase_track(&mut self, track: u16) -> Result<(), Box<dyn Error>> {
         let mut query = format_query(
             "1840 ff01 00 201001 %w".to_string(),
-            vec![
-                QueryValue::Number(track as i64),
-            ],
+            vec![QueryValue::Number(track as i64)],
         )?;
 
         let _ = self.send_query(&mut query, false, false);
@@ -1108,7 +1112,10 @@ impl NetMDInterface {
         )?;
 
         let reply = self.send_query(&mut query, false, false)?;
-        let res = scan_query(reply, "1806 02201001 %?%? %?%? %?%? 1000 00%?0000 %x".to_string())?;
+        let res = scan_query(
+            reply,
+            "1806 02201001 %?%? %?%? %?%? 1000 00%?0000 %x".to_string(),
+        )?;
 
         self.change_descriptor_state(&Descriptor::AudioContentsTD, &DescriptorAction::Close);
 
@@ -1116,7 +1123,10 @@ impl NetMDInterface {
     }
 
     /// Gets the length of tracks as a `std::time::Duration` from a set
-    pub fn track_lengths(&mut self, tracks: Vec<u16>) -> Result<Vec<std::time::Duration>, Box<dyn Error>> {
+    pub fn track_lengths(
+        &mut self,
+        tracks: Vec<u16>,
+    ) -> Result<Vec<std::time::Duration>, Box<dyn Error>> {
         let mut times: Vec<std::time::Duration> = vec![];
 
         self.change_descriptor_state(&Descriptor::AudioContentsTD, &DescriptorAction::OpenRead);
@@ -1132,11 +1142,20 @@ impl NetMDInterface {
 
             let reply = self.send_query(&mut query, false, false)?;
 
-            let res = scan_query(reply, "1806 02201001 %?%? %?%? %?%? 1000 00%?0000 %x".to_string())?;
+            let res = scan_query(
+                reply,
+                "1806 02201001 %?%? %?%? %?%? 1000 00%?0000 %x".to_string(),
+            )?;
 
-            let result = scan_query(res[0].to_vec().unwrap(), "01 0006 0000 %B %B %B %B".to_string())?;
+            let result = scan_query(
+                res[0].to_vec().unwrap(),
+                "01 0006 0000 %B %B %B %B".to_string(),
+            )?;
 
-            let times_num: Vec<u64> = result.into_iter().map(|v| v.to_i64().unwrap() as u64).collect();
+            let times_num: Vec<u64> = result
+                .into_iter()
+                .map(|v| v.to_i64().unwrap() as u64)
+                .collect();
 
             let length = time_to_duration(&times_num);
             times.push(length);
@@ -1162,7 +1181,7 @@ impl NetMDInterface {
             Ok(0x92) => Encoding::LP2,
             Ok(0x93) => Encoding::LP4,
             Ok(e) => return Err(format!("Encoding value {e} out of range (0x90..0x92)").into()),
-            Err(error) => return Err(error)
+            Err(error) => return Err(error),
         };
 
         Ok(final_encoding)
@@ -1173,9 +1192,7 @@ impl NetMDInterface {
         self.change_descriptor_state(&Descriptor::AudioContentsTD, &DescriptorAction::OpenRead);
         let mut query = format_query(
             "1806 01201001 %w ff00 00010008".to_string(),
-            vec![
-                QueryValue::Number(track as i64),
-            ],
+            vec![QueryValue::Number(track as i64)],
         )?;
         let reply = self.send_query(&mut query, false, false)?;
 
@@ -1189,10 +1206,7 @@ impl NetMDInterface {
     /// Gets the disc capacity as a `std::time::Duration`
     pub fn disc_capacity(&mut self) -> Result<[std::time::Duration; 3], Box<dyn Error>> {
         self.change_descriptor_state(&Descriptor::RootTD, &DescriptorAction::OpenRead);
-        let mut query = format_query(
-            "1806 02101000 3080 0300 ff00 00000000".to_string(),
-            vec![],
-        )?;
+        let mut query = format_query("1806 02101000 3080 0300 ff00 00000000".to_string(), vec![])?;
         let reply = self.send_query(&mut query, false, false)?;
         let mut result: [std::time::Duration; 3] = [std::time::Duration::from_secs(0); 3];
 
@@ -1200,13 +1214,17 @@ impl NetMDInterface {
         let res = scan_query(
             reply,
             "1806 02101000 3080 0300 1000 001d0000 001b %?03 0017 8000 0005 %W %B %B %B 0005 %W %B %B %B 0005 %W %B %B %B".to_string()
-        )?;                                                         //25^
-        let res_num: Vec<u64> = res.into_iter().map(|v| v.to_i64().unwrap() as u64).collect();
+        )?; //25^
+        let res_num: Vec<u64> = res
+            .into_iter()
+            .map(|v| v.to_i64().unwrap() as u64)
+            .collect();
 
         // Create 3 values, `Frames Used`, `Frames Total`, and `Frames Left`
         for i in 0..3 {
             let tmp = &res_num[(4 * i)..=(4 * i) + 3];
-            let time_micros = (tmp[0] * 3600000000) + (tmp[1] * 60000000) + (tmp[2] * 1000000) + (tmp[3] * 11600);
+            let time_micros =
+                (tmp[0] * 3600000000) + (tmp[1] * 60000000) + (tmp[2] * 1000000) + (tmp[3] * 11600);
             result[i] = std::time::Duration::from_micros(time_micros);
         }
 
@@ -1216,7 +1234,10 @@ impl NetMDInterface {
     }
 
     pub fn recording_parameters(&mut self) -> Result<Vec<u8>, Box<dyn Error>> {
-        self.change_descriptor_state(&Descriptor::OperatingStatusBlock, &DescriptorAction::OpenRead);
+        self.change_descriptor_state(
+            &Descriptor::OperatingStatusBlock,
+            &DescriptorAction::OpenRead,
+        );
         let mut query = format_query(
             "1809 8001 0330 8801 0030 8805 0030 8807 00 ff00 00000000".to_string(),
             vec![],
@@ -1234,25 +1255,32 @@ impl NetMDInterface {
     /// Gets the bytes of a track
     ///
     /// This can only be executed on an MZ-RH1 / M200
-    pub fn save_track_to_array(&mut self, track: u16) -> Result<(DiscFormat, u16, Vec<u8>), Box<dyn Error>> {
+    pub fn save_track_to_array(
+        &mut self,
+        track: u16,
+    ) -> Result<(DiscFormat, u16, Vec<u8>), Box<dyn Error>> {
         let mut query = format_query(
             "1800 080046 f003010330 ff00 1001 %w".to_string(),
-            vec![
-                QueryValue::Number((track + 1) as i64)
-            ],
+            vec![QueryValue::Number((track + 1) as i64)],
         )?;
 
         let reply = self.send_query(&mut query, false, true)?;
 
-        let res = scan_query(reply, "1800 080046 f0030103 300000 1001 %w %b %d".to_string())?;
+        let res = scan_query(
+            reply,
+            "1800 080046 f0030103 300000 1001 %w %b %d".to_string(),
+        )?;
 
         let frames = res[0].to_i64().unwrap() as u16;
         let codec = res[1].to_i64().unwrap() as u8;
-        let length = res[2].to_i64().unwrap() as u32;
+        let length = res[2].to_i64().unwrap() as usize;
 
         let result = self.net_md_device.read_bulk(length, 0x10000)?;
 
-        scan_query(self.read_reply(false)?, "1800 080046 f003010330 0000 1001 %?%? %?%?".to_string())?;
+        scan_query(
+            self.read_reply(false)?,
+            "1800 080046 f003010330 0000 1001 %?%? %?%?".to_string(),
+        )?;
 
         std::thread::sleep(std::time::Duration::from_millis(500));
 
@@ -1261,18 +1289,16 @@ impl NetMDInterface {
             2 => DiscFormat::LP2,
             4 => DiscFormat::SPMono,
             6 => DiscFormat::SPStereo,
-            _ => return Err("DiscFormat out of range 0..6".into())
+            _ => return Err("DiscFormat out of range 0..6".into()),
         };
 
         Ok((format, frames, result))
     }
 
-        pub fn disable_new_track_protection(&mut self, val: u16) -> Result<(), Box<dyn Error>> {
+    pub fn disable_new_track_protection(&mut self, val: u16) -> Result<(), Box<dyn Error>> {
         let mut query = format_query(
             "1800 080046 f0030103 2b ff %w".to_string(),
-            vec![
-                QueryValue::Number(val as i64)
-            ],
+            vec![QueryValue::Number(val as i64)],
         )?;
 
         let reply = self.send_query(&mut query, false, false)?;
@@ -1281,10 +1307,7 @@ impl NetMDInterface {
     }
 
     pub fn enter_secure_session(&mut self) -> Result<(), Box<dyn Error>> {
-        let mut query = format_query(
-            "1800 080046 f0030103 80 ff".to_string(),
-            vec![],
-        )?;
+        let mut query = format_query("1800 080046 f0030103 80 ff".to_string(), vec![])?;
 
         let reply = self.send_query(&mut query, false, false)?;
         scan_query(reply, "1800 080046 f0030103 80 00".to_string())?;
@@ -1292,10 +1315,7 @@ impl NetMDInterface {
     }
 
     pub fn leave_secure_session(&mut self) -> Result<(), Box<dyn Error>> {
-        let mut query = format_query(
-            "1800 080046 f0030103 81 ff".to_string(),
-            vec![],
-        )?;
+        let mut query = format_query("1800 080046 f0030103 81 ff".to_string(), vec![])?;
 
         let reply = self.send_query(&mut query, false, false)?;
         scan_query(reply, "1800 080046 f0030103 81 00".to_string())?;
@@ -1310,10 +1330,7 @@ impl NetMDInterface {
         The leaf ID is a 8-byte constant
     **/
     pub fn leaf_id(&mut self) -> Result<Vec<u8>, Box<dyn Error>> {
-        let mut query = format_query(
-            "1800 080046 f0030103 11 ff".to_string(),
-            vec![],
-        )?;
+        let mut query = format_query("1800 080046 f0030103 11 ff".to_string(), vec![])?;
 
         let reply = self.send_query(&mut query, false, false)?;
         let res = scan_query(reply, "1800 080046 f0030103 11 00 %*".to_string())?;
@@ -1321,7 +1338,13 @@ impl NetMDInterface {
         Ok(res[0].to_vec().unwrap())
     }
 
-    pub fn send_key_data(&mut self, ekbid: i32, keychain: Vec<[u8; 16]>, depth: i32, ekbsignature: Vec<u8>) -> Result<Vec<u8>, Box<dyn Error>> {
+    pub fn send_key_data(
+        &mut self,
+        ekbid: i32,
+        keychain: Vec<[u8; 16]>,
+        depth: i32,
+        ekbsignature: Vec<u8>,
+    ) -> Result<Vec<u8>, Box<dyn Error>> {
         let chainlen = keychain.len();
         let databytes = 16 + 16 * chainlen + 24;
 
@@ -1349,7 +1372,10 @@ impl NetMDInterface {
 
         let reply = self.send_query(&mut query, false, false)?;
 
-        let res = scan_query(reply, "1800 080046 f0030103 12 01 %?%? %?%?%?%?".to_string())?;
+        let res = scan_query(
+            reply,
+            "1800 080046 f0030103 12 01 %?%? %?%?%?%?".to_string(),
+        )?;
 
         Ok(res[0].to_vec().unwrap())
     }
@@ -1371,10 +1397,7 @@ impl NetMDInterface {
     }
 
     pub fn session_key_forget(&mut self) -> Result<(), Box<dyn Error>> {
-        let mut query = format_query(
-            "1800 080046 f0030103 21 ff 000000".to_string(),
-            vec![],
-        )?;
+        let mut query = format_query("1800 080046 f0030103 21 ff 000000".to_string(), vec![])?;
 
         let reply = self.send_query(&mut query, false, false)?;
         let _ = scan_query(reply, "1800 080046 f0030103 21 00 000000".to_string())?;
@@ -1382,7 +1405,12 @@ impl NetMDInterface {
         Ok(())
     }
 
-    pub fn setup_download(&mut self, contentid: Vec<u8>, keyenckey: Vec<u8>, hex_session_key: String) -> Result<(), Box<dyn Error>> {
+    pub fn setup_download(
+        &mut self,
+        contentid: Vec<u8>,
+        keyenckey: Vec<u8>,
+        hex_session_key: String,
+    ) -> Result<(), Box<dyn Error>> {
         if contentid.len() != 20 {
             return Err("Supplied content ID length wrong".into());
         }
@@ -1395,19 +1423,13 @@ impl NetMDInterface {
 
         let message = [vec![1, 1, 1, 1], contentid, keyenckey].concat();
 
-        let mc = MagicCrypt::new(
-            hex_session_key,
-            SecureBit::Bit256,
-            None::<String>
-        );
+        let mc = MagicCrypt::new(hex_session_key, SecureBit::Bit256, None::<String>);
 
         let encryptedarg = mc.decrypt_bytes_to_bytes(&message)?;
 
         let mut query = format_query(
             "1800 080046 f0030103 22 ff 0000 %*".to_string(),
-            vec![
-                QueryValue::Array(encryptedarg)
-            ],
+            vec![QueryValue::Array(encryptedarg)],
         )?;
 
         let reply = self.send_query(&mut query, false, false)?;
@@ -1417,7 +1439,11 @@ impl NetMDInterface {
         Ok(())
     }
 
-    pub fn commit_track(&mut self, track_number: u16, hex_session_key: String) -> Result<(), Box<dyn Error>> {
+    pub fn commit_track(
+        &mut self,
+        track_number: u16,
+        hex_session_key: String,
+    ) -> Result<(), Box<dyn Error>> {
         if hex_session_key.len() != 16 {
             return Err("Supplied Session Key length wrong".into());
         }
@@ -1429,7 +1455,7 @@ impl NetMDInterface {
             "1800 080046 f0030103 22 ff 0000 %*".to_string(),
             vec![
                 QueryValue::Number(track_number as i64),
-                QueryValue::Array(authentication)
+                QueryValue::Array(authentication),
             ],
         )?;
 
@@ -1440,14 +1466,15 @@ impl NetMDInterface {
         Ok(())
     }
 
-    pub fn send_track(&mut self,
+    pub fn send_track(
+        &mut self,
         wireformat: u8,
         discformat: u8,
         frames: i32,
         pkt_size: u32,
-                      // key   // iv    // data
+        // key   // iv    // data
         packets: Vec<(Vec<u8>, Vec<u8>, Vec<u8>)>,
-        hex_session_key: String
+        hex_session_key: String,
     ) -> Result<(i64, String, String), Box<dyn Error>> {
         if hex_session_key.len() != 16 {
             return Err("Supplied Session Key length wrong".into());
@@ -1456,46 +1483,51 @@ impl NetMDInterface {
         // Sharps are slow
         sleep(Duration::from_millis(200));
 
-        let total_bytes = pkt_size + 24;  //framesizedict[wireformat] * frames + pktcount * 24;
+        let total_bytes = pkt_size + 24; //framesizedict[wireformat] * frames + pktcount * 24;
 
-        let mut query = format_query("1800 080046 f0030103 28 ff 000100 1001 ffff 00 %b %b %d %d".to_string(),
+        let mut query = format_query(
+            "1800 080046 f0030103 28 ff 000100 1001 ffff 00 %b %b %d %d".to_string(),
             vec![
                 QueryValue::Number(wireformat as i64),
                 QueryValue::Number(discformat as i64),
                 QueryValue::Number(frames as i64),
                 QueryValue::Number(total_bytes as i64),
-            ]
+            ],
         )?;
         let mut reply = self.send_query(&mut query, false, true)?;
-        scan_query(reply, "1800 080046 f0030103 28 00 000100 1001 %?%? 00 %*".to_string())?;
+        scan_query(
+            reply,
+            "1800 080046 f0030103 28 00 000100 1001 %?%? 00 %*".to_string(),
+        )?;
 
         // Sharps are slow
         sleep(Duration::from_millis(200));
 
         let mut _written_bytes = 0;
-        for (packet_count, (key, iv, data)) in packets.into_iter().enumerate(){
-            let mut binpack;
-            if packet_count == 0 {
+        for (packet_count, (key, iv, data)) in packets.into_iter().enumerate() {
+            let binpack = if packet_count == 0 {
                 let packed_length: Vec<u8> = pkt_size.to_le_bytes().to_vec();
-                binpack = [vec![0, 0, 0, 0], packed_length, key, iv, data.clone()].concat();
+                [vec![0, 0, 0, 0], packed_length, key, iv, data.clone()].concat()
             } else {
-                binpack = data.clone();
-            }
-            self.net_md_device.write_bulk(&mut binpack)?;
+                data.clone()
+            };
+            self.net_md_device.write_bulk(binpack)?;
             _written_bytes += data.len();
         }
 
         reply = self.read_reply(false)?;
         self.net_md_device.poll()?;
-        let res = scan_query(reply, "1800 080046 f0030103 28 00 000100 1001 %w 00 %?%? %?%?%?%? %?%?%?%? %*".to_string())?;
+        let res = scan_query(
+            reply,
+            "1800 080046 f0030103 28 00 000100 1001 %w 00 %?%? %?%?%?%? %?%?%?%? %*".to_string(),
+        )?;
 
-        let mc = MagicCrypt::new(
-            hex_session_key,
-            SecureBit::Bit256,
-            Some("0000000000000000")
-        );
+        let mc = MagicCrypt::new(hex_session_key, SecureBit::Bit256, Some("0000000000000000"));
 
-        let reply_data = String::from_utf8(mc.decrypt_bytes_to_bytes(&res[1].to_vec().unwrap())?).unwrap().chars().collect::<Vec<char>>();
+        let reply_data = String::from_utf8(mc.decrypt_bytes_to_bytes(&res[1].to_vec().unwrap())?)
+            .unwrap()
+            .chars()
+            .collect::<Vec<char>>();
 
         let part1 = String::from_iter(reply_data.clone()[0..8].iter());
         let part2 = String::from_iter(reply_data.clone()[12..32].iter());
@@ -1506,9 +1538,7 @@ impl NetMDInterface {
     pub fn track_uuid(&mut self, track: u16) -> Result<String, Box<dyn Error>> {
         let mut query = format_query(
             "1800 080046 f0030103 23 ff 1001 %w".to_string(),
-            vec![
-                QueryValue::Number(track as i64),
-            ],
+            vec![QueryValue::Number(track as i64)],
         )?;
         let reply = self.send_query(&mut query, false, false)?;
 
@@ -1518,21 +1548,14 @@ impl NetMDInterface {
     }
 
     pub fn terminate(&mut self) -> Result<(), Box<dyn Error>> {
-        let mut query = format_query(
-            "1800 080046 f0030103 2a ff00".to_string(),
-            vec![],
-        )?;
+        let mut query = format_query("1800 080046 f0030103 2a ff00".to_string(), vec![])?;
         self.send_query(&mut query, false, false)?;
 
         Ok(())
     }
 }
 
-pub fn retailmac(
-    key: Vec<u8>,
-    value: Vec<u8>,
-    iv: Vec<u8>
-) -> Result<(), Box<dyn Error>> {
+pub fn retailmac(key: Vec<u8>, value: Vec<u8>, iv: Vec<u8>) -> Result<(), Box<dyn Error>> {
     let subkey_a = key[0..8].to_vec();
     let beginning = value[0..value.len() - 8].to_vec();
     let _end = value[value.len() - 8..].to_vec();
@@ -1540,7 +1563,7 @@ pub fn retailmac(
     let mc = MagicCrypt::new(
         String::from_utf8(subkey_a).unwrap(),
         SecureBit::Bit256,
-        Some(String::from_utf8(iv).unwrap())
+        Some(String::from_utf8(iv).unwrap()),
     );
     let step1 = mc.encrypt_bytes_to_bytes(&beginning);
 
@@ -1549,7 +1572,7 @@ pub fn retailmac(
     Ok(())
 }
 
-lazy_static!{
+lazy_static! {
     static ref DISC_FOR_WIRE: HashMap<WireFormat, DiscFormat> = HashMap::from([
         (WireFormat::Pcm, DiscFormat::SPStereo),
         (WireFormat::LP2, DiscFormat::LP2),
@@ -1558,14 +1581,13 @@ lazy_static!{
     ]);
 }
 
-struct EKBOpenSource {
-}
+struct EKBOpenSource {}
 
 impl EKBOpenSource {
     fn root_key(&mut self) -> [u8; 16] {
         [
-            0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xf0,
-            0x0f, 0xed, 0xcb, 0xa9, 0x87, 0x65, 0x43, 0x21
+            0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xf0, 0x0f, 0xed, 0xcb, 0xa9, 0x87, 0x65,
+            0x43, 0x21,
         ]
     }
 
@@ -1597,7 +1619,7 @@ struct MDTrack {
     data: Vec<u8>,
     chunk_size: i32,
     full_width_title: Option<String>,
-    encrypt_packets_iterator: EncryptPacketsIterator
+    encrypt_packets_iterator: EncryptPacketsIterator,
 }
 
 #[derive(Clone)]
@@ -1605,7 +1627,7 @@ struct EncryptPacketsIterator {
     kek: Vec<u8>,
     frame_size: i32,
     data: Vec<u8>,
-    chunk_size: i32
+    chunk_size: i32,
 }
 
 impl MDTrack {
@@ -1643,13 +1665,13 @@ impl MDTrack {
     }
 
     pub fn content_id() -> [u8; 20] {
-        [0x01, 0x0f, 0x50, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x48,
-         0xa2, 0x8d, 0x3e, 0x1a, 0x3b, 0x0c, 0x44, 0xaf, 0x2f, 0xa0]
+        [
+            0x01, 0x0f, 0x50, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x48, 0xa2, 0x8d, 0x3e, 0x1a,
+            0x3b, 0x0c, 0x44, 0xaf, 0x2f, 0xa0,
+        ]
     }
 
     pub fn get_kek() -> [u8; 8] {
         [0x14, 0xe3, 0x83, 0x4e, 0xe2, 0xd3, 0xcc, 0xa5]
     }
-
-
 }
