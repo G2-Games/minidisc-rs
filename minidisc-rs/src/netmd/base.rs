@@ -9,7 +9,7 @@ use nusb::{Device, DeviceInfo, Interface};
 
 use futures_lite::future::block_on;
 
-const DEFAULT_TIMEOUT: Duration = Duration::new(9999999, 0);
+const DEFAULT_TIMEOUT: Duration = Duration::new(10000, 0);
 
 const BULK_WRITE_ENDPOINT: u8 = 0x02;
 const BULK_READ_ENDPOINT: u8 = 0x81;
@@ -98,7 +98,7 @@ impl NetMD {
     const READ_REPLY_RETRY_INTERVAL: u32 = 10;
 
     /// Creates a new interface to a NetMD device
-    pub fn new(device_info: DeviceInfo) -> Result<Self, Box<dyn Error>> {
+    pub fn new(device_info: &DeviceInfo) -> Result<Self, Box<dyn Error>> {
         let mut model = DeviceId {
             vendor_id: device_info.vendor_id(),
             product_id: device_info.product_id(),

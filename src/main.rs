@@ -1,28 +1,21 @@
 use minidisc_rs::netmd::interface;
-use yusb;
+use nusb;
 
 fn main() {
-    let webusb_context = yusb::Context::new().unwrap();
+    let devices = nusb::list_devices().unwrap();
 
-    for device in webusb_context.devices().unwrap() {
-        let handle = match device.open() {
-            Ok(handle) => handle,
-            Err(_) => continue,
-        };
-
-        let descriptor = device.device_descriptor().unwrap();
-
-        println!(
-            "Connected to VID: {:04x}, PID: {:04x}",
-            descriptor.vendor_id(),
-            descriptor.product_id(),
-        );
-
+    for device in devices {
         // Ensure the player is a minidisc player and not some other random device
-        let mut player_controller = match interface::NetMDInterface::new(device) {
+        let mut player_controller = match interface::NetMDInterface::new(&device) {
             Ok(player) => player,
             Err(_) => continue,
         };
+
+        println!(
+            "Connected to VID: {:04x}, PID: {:04x}",
+            device.vendor_id(),
+            device.product_id(),
+        );
 
         println!(
             "Player Model: {}",

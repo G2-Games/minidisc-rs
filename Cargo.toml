@@ -10,8 +10,8 @@ license = "AGPL-3.0"
 
 [dependencies]
 hex = "0.4.3"
+nusb = "0.1.4"
 translit = "0.5.0"
-yusb = "0.1.2"
 
 [dependencies.minidisc-rs]
 path = "minidisc-rs"

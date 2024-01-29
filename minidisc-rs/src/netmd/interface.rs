@@ -202,8 +202,8 @@ impl NetMDInterface {
     const MAX_INTERIM_READ_ATTEMPTS: u8 = 4;
     const INTERIM_RESPONSE_RETRY_INTERVAL: u32 = 100;
 
-    pub fn new(device: nusb::DeviceInfo) -> Result<Self, Box<dyn Error>> {
-        let net_md_device = base::NetMD::new(device).unwrap();
+    pub fn new(device: &nusb::DeviceInfo) -> Result<Self, Box<dyn Error>> {
+        let net_md_device = base::NetMD::new(device)?;
         Ok(NetMDInterface { net_md_device })
     }
 
