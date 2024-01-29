@@ -23,7 +23,8 @@ des = "0.8.1"
 unicode-jp = "0.4.0"
 regex = "1.10.2"
 lazy_static = "1.4.0"
-yusb = "0.1.2"
+nusb = "0.1.4"
+futures-lite = "2.2.0"
 
 
 [lib]
