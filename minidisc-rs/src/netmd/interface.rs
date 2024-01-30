@@ -38,7 +38,7 @@ pub enum DiscFormat {
 }
 
 #[derive(Clone, Hash, Eq, PartialEq)]
-enum WireFormat {
+pub enum WireFormat {
     Pcm = 0x00,
     L105kbps = 0x90,
     LP2 = 0x94,
@@ -447,7 +447,7 @@ impl NetMDInterface {
         Ok(())
     }
 
-    async fn acquire(&mut self) -> Result<(), Box<dyn Error>> {
+    pub async fn acquire(&mut self) -> Result<(), Box<dyn Error>> {
         let mut query = format_query("ff 010c ffff ffff ffff ffff ffff ffff".to_string(), vec![])?;
         let reply = self.send_query(&mut query, false, false).await?;
 
@@ -1708,12 +1708,12 @@ pub struct MDSession {
 }
 
 impl MDSession {
-    pub fn init(&mut self) -> Result<(), Box<dyn Error>>{
-        self.md.enter_secure_session()?;
-        self.md.leaf_id()?;
+    pub async fn init(&mut self) -> Result<(), Box<dyn Error>>{
+        self.md.enter_secure_session().await?;
+        self.md.leaf_id().await?;
 
         let ekb = self.ekb_object.ekb_data_for_leaf_id();
-        self.md.send_key_data(self.ekb_object.ekb_id(), ekb.chains, ekb.depth, ekb.signature)?;
+        self.md.send_key_data(self.ekb_object.ekb_id(), ekb.chains, ekb.depth, ekb.signature).await?;
         let mut nonce = vec![0u8, 8];
         rand::thread_rng().fill_bytes(&mut nonce);
 

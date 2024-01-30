@@ -31,12 +31,12 @@ pub struct DeviceStatus {
     time: Time,
 }
 
-pub fn device_status(interface: &mut NetMDInterface) -> Result<DeviceStatus, Box<dyn Error>> {
-    let status = interface.status()?;
-    let playback_status = interface.playback_status2()?;
+pub async fn device_status(interface: &mut NetMDInterface) -> Result<DeviceStatus, Box<dyn Error>> {
+    let status = interface.status().await?;
+    let playback_status = interface.playback_status2().await?;
     let b1: u16 = playback_status[4] as u16;
     let b2: u16 = playback_status[5] as u16;
-    let position = interface.position()?;
+    let position = interface.position().await?;
     let operating_status = b1 << 8 | b2;
 
     let track = position[0] as u8;
@@ -56,22 +56,22 @@ pub fn device_status(interface: &mut NetMDInterface) -> Result<DeviceStatus, Box
     Ok(DeviceStatus { disc_present, state, track, time })
 }
 
-pub fn prepare_download(interface: &mut NetMDInterface) -> Result<(), Box<dyn Error>>{
-    while ![OperatingStatus::DiscBlank, OperatingStatus::Ready].contains(&device_status(interface)?.state.or(Some(OperatingStatus::NoDisc)).unwrap()) {
+pub async fn prepare_download(interface: &mut NetMDInterface) -> Result<(), Box<dyn Error>>{
+    while ![OperatingStatus::DiscBlank, OperatingStatus::Ready].contains(&device_status(interface).await?.state.or(Some(OperatingStatus::NoDisc)).unwrap()) {
         sleep(Duration::from_millis(200));
     }
 
     let _ = interface.session_key_forget();
     let _ = interface.leave_secure_session();
 
-    interface.acquire()?;
+    interface.acquire().await?;
     let _ = interface.disable_new_track_protection(1);
 
     Ok(())
 }
 
-pub fn download(interface: &mut NetMDInterface, track: MDTrack) -> Result<(), Box<dyn Error>>{
-    prepare_download(interface)?;
+pub async fn download(interface: &mut NetMDInterface, track: MDTrack) -> Result<(), Box<dyn Error>>{
+    prepare_download(interface).await?;
 
     Ok(())
 }
