@@ -4,7 +4,7 @@ use std::error::Error;
 use std::time::Duration;
 
 // USB stuff
-use nusb::transfer::{Control, ControlType, Recipient, RequestBuffer, ControlIn, ControlOut};
+use nusb::transfer::{Control, ControlIn, ControlOut, ControlType, Recipient, RequestBuffer};
 use nusb::{Device, DeviceInfo, Interface};
 
 const DEFAULT_TIMEOUT: Duration = Duration::new(10000, 0);
@@ -146,16 +146,19 @@ impl NetMD {
     /// of the previous command, or the status
     pub async fn poll(&mut self) -> Result<(u16, [u8; 4]), Box<dyn Error>> {
         // Create an array to store the result of the poll
-        let poll_result = match self.usb_interface.control_in(
-            ControlIn {
+        let poll_result = match self
+            .usb_interface
+            .control_in(ControlIn {
                 control_type: ControlType::Vendor,
                 recipient: Recipient::Interface,
                 request: 0x01,
                 value: 0,
                 index: 0,
                 length: 4,
-            }
-        ).await.into_result() {
+            })
+            .await
+            .into_result()
+        {
             Ok(size) => size,
             Err(error) => return Err(error.into()),
         };
@@ -198,22 +201,28 @@ impl NetMD {
             true => 0xff,
         };
 
-        match self.usb_interface.control_out(
-            ControlOut {
+        match self
+            .usb_interface
+            .control_out(ControlOut {
                 control_type: ControlType::Vendor,
                 recipient: Recipient::Interface,
                 request,
                 value: 0,
                 index: 0,
                 data: &command,
-            }
-        ).await.into_result() {
+            })
+            .await
+            .into_result()
+        {
             Ok(_) => Ok(()),
             Err(error) => Err(error.into()),
         }
     }
 
-    pub async fn read_reply(&mut self, override_length: Option<i32>) -> Result<Vec<u8>, Box<dyn Error>> {
+    pub async fn read_reply(
+        &mut self,
+        override_length: Option<i32>,
+    ) -> Result<Vec<u8>, Box<dyn Error>> {
         self._read_reply(false, override_length).await
     }
 
@@ -253,16 +262,18 @@ impl NetMD {
         };
 
         // Create a buffer to fill with the result
-        let reply = self.usb_interface.control_in(
-            ControlIn {
+        let reply = self
+            .usb_interface
+            .control_in(ControlIn {
                 control_type: ControlType::Vendor,
                 recipient: Recipient::Interface,
                 request,
                 value: 0,
                 index: 0,
                 length,
-            }
-        ).await.into_result()?;
+            })
+            .await
+            .into_result()?;
 
         Ok(reply)
     }
@@ -292,7 +303,10 @@ impl NetMD {
             done -= to_read;
             let buffer = RequestBuffer::new(to_read);
 
-            let res = match self.usb_interface.bulk_in(BULK_READ_ENDPOINT, buffer).await
+            let res = match self
+                .usb_interface
+                .bulk_in(BULK_READ_ENDPOINT, buffer)
+                .await
                 .into_result()
             {
                 Ok(result) => result,
@@ -306,10 +320,11 @@ impl NetMD {
     }
 
     pub async fn write_bulk(&mut self, data: Vec<u8>) -> Result<usize, Box<dyn Error>> {
-        Ok(
-            self.usb_interface.bulk_out(BULK_WRITE_ENDPOINT, data).await
-                .into_result()?
-                .actual_length(),
-        )
+        Ok(self
+            .usb_interface
+            .bulk_out(BULK_WRITE_ENDPOINT, data)
+            .await
+            .into_result()?
+            .actual_length())
     }
 }

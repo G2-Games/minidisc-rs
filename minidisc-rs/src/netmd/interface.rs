@@ -346,7 +346,11 @@ impl NetMDInterface {
         Ok(result)
     }
 
-    async fn send_command(&mut self, query: &mut Vec<u8>, test: bool) -> Result<(), Box<dyn Error>> {
+    async fn send_command(
+        &mut self,
+        query: &mut Vec<u8>,
+        test: bool,
+    ) -> Result<(), Box<dyn Error>> {
         let status_byte = match test {
             true => Status::GeneralInquiry,
             false => Status::Control,
@@ -966,7 +970,11 @@ impl NetMDInterface {
     }
 
     // Sets the title of the disc
-    pub async fn set_disc_title(&mut self, title: String, wchar: bool) -> Result<(), Box<dyn Error>> {
+    pub async fn set_disc_title(
+        &mut self,
+        title: String,
+        wchar: bool,
+    ) -> Result<(), Box<dyn Error>> {
         let current_title = self.raw_disc_title(wchar).await?;
         if current_title == title {
             return Err("Title is already the same".into());
@@ -1099,7 +1107,12 @@ impl NetMDInterface {
         Ok(())
     }
 
-    async fn raw_track_info(&mut self, track: u16, p1: i32, p2: i32) -> Result<Vec<u8>, Box<dyn Error>> {
+    async fn raw_track_info(
+        &mut self,
+        track: u16,
+        p1: i32,
+        p2: i32,
+    ) -> Result<Vec<u8>, Box<dyn Error>> {
         self.change_descriptor_state(&Descriptor::AudioContentsTD, &DescriptorAction::OpenRead);
 
         let mut query = format_query(
@@ -1167,7 +1180,10 @@ impl NetMDInterface {
     }
 
     /// Gets the length of a track as a `std::time::Duration`
-    pub async fn track_length(&mut self, track: u16) -> Result<std::time::Duration, Box<dyn Error>> {
+    pub async fn track_length(
+        &mut self,
+        track: u16,
+    ) -> Result<std::time::Duration, Box<dyn Error>> {
         Ok(self.track_lengths([track].into()).await?[0])
     }
 
@@ -1329,7 +1345,7 @@ impl NetMDInterface {
      * the root key.
      *
      * The leaf ID is a 8-byte constant
-    **/
+     **/
     pub async fn leaf_id(&mut self) -> Result<Vec<u8>, Box<dyn Error>> {
         let mut query = format_query("1800 080046 f0030103 11 ff".to_string(), vec![])?;
 
@@ -1381,7 +1397,10 @@ impl NetMDInterface {
         Ok(res[0].to_vec().unwrap())
     }
 
-    pub async fn session_key_exchange(&mut self, hostnonce: Vec<u8>) -> Result<Vec<u8>, Box<dyn Error>> {
+    pub async fn session_key_exchange(
+        &mut self,
+        hostnonce: Vec<u8>,
+    ) -> Result<Vec<u8>, Box<dyn Error>> {
         if hostnonce.len() != 8 {
             return Err("Supplied host nonce length wrong".into());
         }
