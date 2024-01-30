@@ -955,7 +955,7 @@ impl NetMDInterface {
         Ok(track_titles)
     }
 
-    /// Gets the title of a track at an index
+    /// Gets the title of a single track at an index
     pub async fn track_title(&mut self, track: u16, wchar: bool) -> Result<String, Box<dyn Error>> {
         let title = match self.track_titles([track].into(), wchar).await {
             Ok(titles) => titles[0].clone(),

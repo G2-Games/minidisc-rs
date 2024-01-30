@@ -4,11 +4,10 @@ use std::error::Error;
 use std::time::Duration;
 
 // USB stuff
-use nusb::transfer::{Control, ControlType, Recipient, RequestBuffer, ControlIn};
+use nusb::transfer::{Control, ControlType, Recipient, RequestBuffer, ControlIn, ControlOut};
 use nusb::{Device, DeviceInfo, Interface};
 
 const DEFAULT_TIMEOUT: Duration = Duration::new(10000, 0);
-
 const BULK_WRITE_ENDPOINT: u8 = 0x02;
 const BULK_READ_ENDPOINT: u8 = 0x81;
 
@@ -199,17 +198,16 @@ impl NetMD {
             true => 0xff,
         };
 
-        match self.usb_interface.control_out_blocking(
-            Control {
+        match self.usb_interface.control_out(
+            ControlOut {
                 control_type: ControlType::Vendor,
                 recipient: Recipient::Interface,
                 request,
                 value: 0,
                 index: 0,
-            },
-            &command,
-            DEFAULT_TIMEOUT,
-        ) {
+                data: &command,
+            }
+        ).await.into_result() {
             Ok(_) => Ok(()),
             Err(error) => Err(error.into()),
         }
@@ -226,8 +224,7 @@ impl NetMD {
         self._read_reply(true, override_length).await
     }
 
-    /// Poll to see if a message is ready,
-    /// and if so, recieve it
+    /// Poll to see if a message is ready, and once it is, retrieve it
     async fn _read_reply(
         &mut self,
         use_factory_command: bool,
@@ -237,6 +234,7 @@ impl NetMD {
 
         let mut current_attempt = 0;
         while length == 0 {
+            // Back off while trying again
             let sleep_time = Self::READ_REPLY_RETRY_INTERVAL as u64
                 * (u64::pow(2, current_attempt as u32 / 10) - 1);
 
@@ -255,23 +253,18 @@ impl NetMD {
         };
 
         // Create a buffer to fill with the result
-        let mut buf: Vec<u8> = vec![0; length as usize];
-
-        // Create a buffer to fill with the result
-        match self.usb_interface.control_in_blocking(
-            Control {
+        let reply = self.usb_interface.control_in(
+            ControlIn {
                 control_type: ControlType::Vendor,
                 recipient: Recipient::Interface,
                 request,
                 value: 0,
                 index: 0,
-            },
-            &mut buf,
-            DEFAULT_TIMEOUT,
-        ) {
-            Ok(_) => Ok(buf),
-            Err(error) => Err(error.into()),
-        }
+                length,
+            }
+        ).await.into_result()?;
+
+        Ok(reply)
     }
 
     // Default chunksize should be 0x10000

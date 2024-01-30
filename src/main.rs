@@ -9,10 +9,7 @@ async fn main() {
         // Ensure the player is a minidisc player and not some other random device
         let mut player_controller = match interface::NetMDInterface::new(&device).await {
             Ok(player) => player,
-            Err(err) => {
-                dbg!(err);
-                continue;
-            }
+            Err(err) => continue,
         };
 
         println!(
