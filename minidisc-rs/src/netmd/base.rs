@@ -4,13 +4,10 @@ use std::error::Error;
 use std::time::Duration;
 
 // USB stuff
-use nusb::transfer::{Control, ControlType, Recipient, RequestBuffer};
+use nusb::transfer::{Control, ControlIn, ControlOut, ControlType, Recipient, RequestBuffer};
 use nusb::{Device, DeviceInfo, Interface};
 
-use futures_lite::future::block_on;
-
 const DEFAULT_TIMEOUT: Duration = Duration::new(10000, 0);
-
 const BULK_WRITE_ENDPOINT: u8 = 0x02;
 const BULK_READ_ENDPOINT: u8 = 0x81;
 
@@ -98,7 +95,7 @@ impl NetMD {
     const READ_REPLY_RETRY_INTERVAL: u32 = 10;
 
     /// Creates a new interface to a NetMD device
-    pub fn new(device_info: &DeviceInfo) -> Result<Self, Box<dyn Error>> {
+    pub async fn new(device_info: &DeviceInfo) -> Result<Self, Box<dyn Error>> {
         let mut model = DeviceId {
             vendor_id: device_info.vendor_id(),
             product_id: device_info.product_id(),
@@ -131,61 +128,67 @@ impl NetMD {
     }
 
     /// Gets the device name, this is limited to the devices in the list
-    pub fn device_name(&self) -> &Option<String> {
+    pub async fn device_name(&self) -> &Option<String> {
         &self.model.name
     }
 
     /// Gets the vendor id
-    pub fn vendor_id(&self) -> &u16 {
+    pub async fn vendor_id(&self) -> &u16 {
         &self.model.vendor_id
     }
 
     /// Gets the product id
-    pub fn product_id(&self) -> &u16 {
+    pub async fn product_id(&self) -> &u16 {
         &self.model.product_id
     }
 
     /// Poll the device to get either the result
     /// of the previous command, or the status
-    pub fn poll(&mut self) -> Result<(u16, [u8; 4]), Box<dyn Error>> {
+    pub async fn poll(&mut self) -> Result<(u16, [u8; 4]), Box<dyn Error>> {
         // Create an array to store the result of the poll
-        let mut poll_result = [0u8; 4];
-
-        let _status = match self.usb_interface.control_in_blocking(
-            Control {
+        let poll_result = match self
+            .usb_interface
+            .control_in(ControlIn {
                 control_type: ControlType::Vendor,
                 recipient: Recipient::Interface,
                 request: 0x01,
                 value: 0,
                 index: 0,
-            },
-            &mut poll_result,
-            DEFAULT_TIMEOUT,
-        ) {
+                length: 4,
+            })
+            .await
+            .into_result()
+        {
             Ok(size) => size,
             Err(error) => return Err(error.into()),
         };
 
-        let length_bytes = [poll_result[2], poll_result[3]];
-        Ok((u16::from_le_bytes(length_bytes), poll_result))
+        let length_bytes = u16::from_le_bytes([poll_result[2], poll_result[3]]);
+
+        let poll_result: [u8; 4] = match poll_result.try_into() {
+            Ok(val) => val,
+            Err(_) => return Err("could not convert result".into()),
+        };
+
+        Ok((length_bytes, poll_result))
     }
 
-    pub fn send_command(&mut self, command: Vec<u8>) -> Result<(), Box<dyn Error>> {
-        self._send_command(command, false)
+    pub async fn send_command(&mut self, command: Vec<u8>) -> Result<(), Box<dyn Error>> {
+        self._send_command(command, false).await
     }
 
-    pub fn send_factory_command(&mut self, command: Vec<u8>) -> Result<(), Box<dyn Error>> {
-        self._send_command(command, true)
+    pub async fn send_factory_command(&mut self, command: Vec<u8>) -> Result<(), Box<dyn Error>> {
+        self._send_command(command, true).await
     }
 
     /// Send a control message to the device
-    fn _send_command(
+    async fn _send_command(
         &mut self,
         command: Vec<u8>,
         use_factory_command: bool,
     ) -> Result<(), Box<dyn Error>> {
         // First poll to ensure the device is ready
-        match self.poll() {
+        match self.poll().await {
             Ok(buffer) => match buffer.1[2] {
                 0 => 0,
                 _ => return Err("Device not ready!".into()),
@@ -198,49 +201,54 @@ impl NetMD {
             true => 0xff,
         };
 
-        match self.usb_interface.control_out_blocking(
-            Control {
+        match self
+            .usb_interface
+            .control_out(ControlOut {
                 control_type: ControlType::Vendor,
                 recipient: Recipient::Interface,
                 request,
                 value: 0,
                 index: 0,
-            },
-            &command,
-            DEFAULT_TIMEOUT,
-        ) {
+                data: &command,
+            })
+            .await
+            .into_result()
+        {
             Ok(_) => Ok(()),
             Err(error) => Err(error.into()),
         }
     }
 
-    pub fn read_reply(&mut self, override_length: Option<i32>) -> Result<Vec<u8>, Box<dyn Error>> {
-        self._read_reply(false, override_length)
-    }
-
-    pub fn read_factory_reply(
+    pub async fn read_reply(
         &mut self,
         override_length: Option<i32>,
     ) -> Result<Vec<u8>, Box<dyn Error>> {
-        self._read_reply(true, override_length)
+        self._read_reply(false, override_length).await
     }
 
-    /// Poll to see if a message is ready,
-    /// and if so, recieve it
-    fn _read_reply(
+    pub async fn read_factory_reply(
+        &mut self,
+        override_length: Option<i32>,
+    ) -> Result<Vec<u8>, Box<dyn Error>> {
+        self._read_reply(true, override_length).await
+    }
+
+    /// Poll to see if a message is ready, and once it is, retrieve it
+    async fn _read_reply(
         &mut self,
         use_factory_command: bool,
         override_length: Option<i32>,
     ) -> Result<Vec<u8>, Box<dyn Error>> {
-        let mut length = self.poll()?.0;
+        let mut length = self.poll().await?.0;
 
         let mut current_attempt = 0;
         while length == 0 {
+            // Back off while trying again
             let sleep_time = Self::READ_REPLY_RETRY_INTERVAL as u64
                 * (u64::pow(2, current_attempt as u32 / 10) - 1);
 
             std::thread::sleep(std::time::Duration::from_millis(sleep_time));
-            length = self.poll()?.0;
+            length = self.poll().await?.0;
             current_attempt += 1;
         }
 
@@ -254,38 +262,35 @@ impl NetMD {
         };
 
         // Create a buffer to fill with the result
-        let mut buf: Vec<u8> = vec![0; length as usize];
-
-        // Create a buffer to fill with the result
-        match self.usb_interface.control_in_blocking(
-            Control {
+        let reply = self
+            .usb_interface
+            .control_in(ControlIn {
                 control_type: ControlType::Vendor,
                 recipient: Recipient::Interface,
                 request,
                 value: 0,
                 index: 0,
-            },
-            &mut buf,
-            DEFAULT_TIMEOUT,
-        ) {
-            Ok(_) => Ok(buf),
-            Err(error) => Err(error.into()),
-        }
+                length,
+            })
+            .await
+            .into_result()?;
+
+        Ok(reply)
     }
 
     // Default chunksize should be 0x10000
     // TODO: Make these Async eventually
-    pub fn read_bulk(
+    pub async fn read_bulk(
         &mut self,
         length: usize,
         chunksize: usize,
     ) -> Result<Vec<u8>, Box<dyn Error>> {
-        let result = self.read_bulk_to_array(length, chunksize)?;
+        let result = self.read_bulk_to_array(length, chunksize).await?;
 
         Ok(result)
     }
 
-    pub fn read_bulk_to_array(
+    pub async fn read_bulk_to_array(
         &mut self,
         length: usize,
         chunksize: usize,
@@ -298,7 +303,10 @@ impl NetMD {
             done -= to_read;
             let buffer = RequestBuffer::new(to_read);
 
-            let res = match block_on(self.usb_interface.bulk_in(BULK_READ_ENDPOINT, buffer))
+            let res = match self
+                .usb_interface
+                .bulk_in(BULK_READ_ENDPOINT, buffer)
+                .await
                 .into_result()
             {
                 Ok(result) => result,
@@ -311,11 +319,12 @@ impl NetMD {
         Ok(final_result)
     }
 
-    pub fn write_bulk(&mut self, data: Vec<u8>) -> Result<usize, Box<dyn Error>> {
-        Ok(
-            block_on(self.usb_interface.bulk_out(BULK_WRITE_ENDPOINT, data))
-                .into_result()?
-                .actual_length(),
-        )
+    pub async fn write_bulk(&mut self, data: Vec<u8>) -> Result<usize, Box<dyn Error>> {
+        Ok(self
+            .usb_interface
+            .bulk_out(BULK_WRITE_ENDPOINT, data)
+            .await
+            .into_result()?
+            .actual_length())
     }
 }

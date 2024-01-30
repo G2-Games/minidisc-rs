@@ -6,7 +6,7 @@
 
 mod base;
 pub mod interface;
+mod mappings;
 mod query_utils;
 mod utils;
-mod mappings;
 mod commands;

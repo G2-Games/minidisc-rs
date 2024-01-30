@@ -3,7 +3,7 @@ use lazy_static::lazy_static;
 use std::collections::hash_map::HashMap;
 use std::error::Error;
 
-lazy_static!{
+lazy_static! {
     /// %b, w, d, q - explained above (can have endiannes overriden by '>' and '<' operators, f. ex. %>d %<q)
     /// %s - Uint8Array preceded by 2 bytes of length
     /// %x - Uint8Array preceded by 2 bytes of length
@@ -44,10 +44,7 @@ impl QueryValue {
 }
 
 /// Formats a query using a standard input to send to the player
-pub fn format_query(
-    format: String,
-    args: Vec<QueryValue>,
-) -> Result<Vec<u8>, Box<dyn Error>> {
+pub fn format_query(format: String, args: Vec<QueryValue>) -> Result<Vec<u8>, Box<dyn Error>> {
     if DEBUG {
         println!("SENT>>> F: {}", format);
     }

@@ -59,9 +59,7 @@ pub fn half_width_to_full_width_range(range: &str) -> String {
         .collect()
 }
 
-pub fn get_bytes<const S: usize>(
-    iterator: &mut IntoIter<u8>,
-) -> Result<[u8; S], Box<dyn Error>> {
+pub fn get_bytes<const S: usize>(iterator: &mut IntoIter<u8>) -> Result<[u8; S], Box<dyn Error>> {
     let byte_vec: Vec<u8> = iterator.take(S).collect();
     let bytes: [u8; S] = byte_vec.try_into().unwrap();
 
@@ -170,5 +168,7 @@ pub fn agressive_sanitize_title(title: &str) -> String {
 
 pub fn time_to_duration(time: &Vec<u64>) -> std::time::Duration {
     assert_eq!(time.len(), 4);
-    std::time::Duration::from_micros((time[0] * 3600000000) + (time[1] * 60000000) + (time[2] * 1000000) + (time[3] * 11600))
+    std::time::Duration::from_micros(
+        (time[0] * 3600000000) + (time[1] * 60000000) + (time[2] * 1000000) + (time[3] * 11600),
+    )
 }
