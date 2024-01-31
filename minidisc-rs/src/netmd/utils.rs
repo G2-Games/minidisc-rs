@@ -89,15 +89,13 @@ fn check(string: String) -> Option<String> {
     None
 }
 
-pub fn sanitize_half_width_title(mut title: String) -> Vec<u8> {
-    title = wide2ascii(&title);
-    title = nowidespace(&title);
-    title = hira2kata(&title);
-    title = combine(&title);
+pub fn sanitize_half_width_title(title: &str) -> Vec<u8> {
+    let mut string_title = wide2ascii(&title);
+    string_title = nowidespace(&string_title);
+    string_title = hira2kata(&string_title);
+    string_title = combine(&string_title);
 
-    println!("{}", title);
-
-    let new_title: String = title
+    let new_title: String = string_title
         .chars()
         .map(|c| {
             check(c.to_string()).unwrap_or(

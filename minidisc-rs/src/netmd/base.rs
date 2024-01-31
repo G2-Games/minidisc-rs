@@ -1,11 +1,17 @@
+#![cfg_attr(debug_assertions, allow(dead_code))]
 use nofmt;
 use once_cell::sync::Lazy;
 use std::error::Error;
 use std::time::Duration;
 
+#[cfg(target_family = "wasm")]
+use gloo::timers::future::TimeoutFuture;
+
 // USB stuff
-use nusb::transfer::{Control, ControlIn, ControlOut, ControlType, Recipient, RequestBuffer};
-use nusb::{Device, DeviceInfo, Interface};
+//use nusb::transfer::{Control, ControlIn, ControlOut, ControlType, Recipient, RequestBuffer};
+use cross_usb::context::{UsbDevice, UsbInterface};
+use cross_usb::usb::{ControlIn, ControlOut, ControlType, Device, Interface, Recipient};
+//use nusb::{Device, DeviceInfo, Interface};
 
 const DEFAULT_TIMEOUT: Duration = Duration::new(10000, 0);
 const BULK_WRITE_ENDPOINT: u8 = 0x02;
@@ -85,8 +91,7 @@ pub struct DeviceId {
 
 /// A connection to a NetMD device
 pub struct NetMD {
-    usb_device: Device,
-    usb_interface: Interface,
+    usb_interface: UsbInterface,
     model: DeviceId,
     status: Option<Status>,
 }
@@ -95,10 +100,10 @@ impl NetMD {
     const READ_REPLY_RETRY_INTERVAL: u32 = 10;
 
     /// Creates a new interface to a NetMD device
-    pub async fn new(device_info: &DeviceInfo) -> Result<Self, Box<dyn Error>> {
+    pub async fn new(usb_device: &UsbDevice) -> Result<Self, Box<dyn Error>> {
         let mut model = DeviceId {
-            vendor_id: device_info.vendor_id(),
-            product_id: device_info.product_id(),
+            vendor_id: usb_device.vendor_id().await,
+            product_id: usb_device.product_id().await,
             name: None,
         };
 
@@ -116,11 +121,9 @@ impl NetMD {
             Some(_) => (),
         }
 
-        let usb_device = device_info.open()?;
-        let usb_interface = usb_device.claim_interface(0)?;
+        let usb_interface = usb_device.open_interface(0).await?;
 
         Ok(Self {
-            usb_device,
             usb_interface,
             model,
             status: None,
@@ -157,10 +160,9 @@ impl NetMD {
                 length: 4,
             })
             .await
-            .into_result()
         {
             Ok(size) => size,
-            Err(error) => return Err(error.into()),
+            Err(error) => return Err(error),
         };
 
         let length_bytes = u16::from_le_bytes([poll_result[2], poll_result[3]]);
@@ -190,9 +192,9 @@ impl NetMD {
         // First poll to ensure the device is ready
         match self.poll().await {
             Ok(buffer) => match buffer.1[2] {
-                0 => 0,
-                _ => return Err("Device not ready!".into()),
-            },
+                    0 => 0,
+                    _ => return Err("Device not ready!".into()),
+                },
             Err(error) => return Err(error),
         };
 
@@ -212,10 +214,9 @@ impl NetMD {
                 data: &command,
             })
             .await
-            .into_result()
         {
             Ok(_) => Ok(()),
-            Err(error) => Err(error.into()),
+            Err(error) => Err(error),
         }
     }
 
@@ -242,12 +243,17 @@ impl NetMD {
         let mut length = self.poll().await?.0;
 
         let mut current_attempt = 0;
-        while length == 0 {
+        while length == 0 && current_attempt < 75 {
             // Back off while trying again
             let sleep_time = Self::READ_REPLY_RETRY_INTERVAL as u64
                 * (u64::pow(2, current_attempt as u32 / 10) - 1);
 
+            #[cfg(not(target_family = "wasm"))]
             std::thread::sleep(std::time::Duration::from_millis(sleep_time));
+
+            #[cfg(target_family = "wasm")]
+            TimeoutFuture::new(sleep_time as u32).await;
+
             length = self.poll().await?.0;
             current_attempt += 1;
         }
@@ -272,14 +278,12 @@ impl NetMD {
                 index: 0,
                 length,
             })
-            .await
-            .into_result()?;
+            .await?;
 
         Ok(reply)
     }
 
     // Default chunksize should be 0x10000
-    // TODO: Make these Async eventually
     pub async fn read_bulk(
         &mut self,
         length: usize,
@@ -301,13 +305,11 @@ impl NetMD {
         while done < length {
             let to_read = std::cmp::min(chunksize, length - done);
             done -= to_read;
-            let buffer = RequestBuffer::new(to_read);
 
             let res = match self
                 .usb_interface
-                .bulk_in(BULK_READ_ENDPOINT, buffer)
+                .bulk_in(BULK_READ_ENDPOINT, to_read)
                 .await
-                .into_result()
             {
                 Ok(result) => result,
                 Err(error) => return Err(format!("USB error: {:?}", error).into()),
@@ -320,11 +322,6 @@ impl NetMD {
     }
 
     pub async fn write_bulk(&mut self, data: Vec<u8>) -> Result<usize, Box<dyn Error>> {
-        Ok(self
-            .usb_interface
-            .bulk_out(BULK_WRITE_ENDPOINT, data)
-            .await
-            .into_result()?
-            .actual_length())
+        self.usb_interface.bulk_out(BULK_WRITE_ENDPOINT, data).await
     }
 }

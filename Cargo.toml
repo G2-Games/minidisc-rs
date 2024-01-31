@@ -10,9 +10,12 @@ license = "AGPL-3.0"
 
 [dependencies]
 hex = "0.4.3"
-nusb = "0.1.4"
+cross_usb = { path = "/home/g2/Documents/projects/code/rust/cross-usb/" }
+[target.'cfg(target_family = "wasm")'.dependencies]
+tokio = { version = "1.35.1", features = ["macros"] }
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
 tokio = { version = "1.35.1", features = ["full"] }
 
-[dependencies.minidisc-rs]
+[dependencies.minidisc_rs]
 path = "minidisc-rs"
 version = "0.0.1"
