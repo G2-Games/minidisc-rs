@@ -5,7 +5,10 @@ use std::error::Error;
 use std::time::Duration;
 
 #[cfg(target_family = "wasm")]
-use gloo::timers::future::TimeoutFuture;
+use gloo::{
+        timers::future::TimeoutFuture,
+        console::log,
+};
 
 // USB stuff
 //use nusb::transfer::{Control, ControlIn, ControlOut, ControlType, Recipient, RequestBuffer};
@@ -242,11 +245,13 @@ impl NetMD {
     ) -> Result<Vec<u8>, Box<dyn Error>> {
         let mut length = self.poll().await?.0;
 
-        let mut current_attempt = 0;
-        while length == 0 && current_attempt < 75 {
+        for attempt in 0..75 {
+            if attempt == 75 {
+                return Err("Failed to get response length".into());
+            }
             // Back off while trying again
             let sleep_time = Self::READ_REPLY_RETRY_INTERVAL as u64
-                * (u64::pow(2, current_attempt as u32 / 10) - 1);
+                * (u64::pow(2, attempt as u32 / 10) - 1);
 
             #[cfg(not(target_family = "wasm"))]
             std::thread::sleep(std::time::Duration::from_millis(sleep_time));
@@ -255,7 +260,9 @@ impl NetMD {
             TimeoutFuture::new(sleep_time as u32).await;
 
             length = self.poll().await?.0;
-            current_attempt += 1;
+            if length > 0 {
+                break
+            }
         }
 
         if let Some(value) = override_length {
