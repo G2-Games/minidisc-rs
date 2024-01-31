@@ -3,7 +3,7 @@ use cross_usb::usb::Device;
 
 #[tokio::main]
 async fn main() {
-    let device = cross_usb::context::get_device(0x054c, 0x0186).await.unwrap();
+    let device = cross_usb::get_device(0x054c, 0x0186).await.unwrap();
 
     dbg!(device.vendor_id().await);
 

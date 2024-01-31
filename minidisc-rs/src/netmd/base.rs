@@ -12,7 +12,7 @@ use gloo::{
 
 // USB stuff
 //use nusb::transfer::{Control, ControlIn, ControlOut, ControlType, Recipient, RequestBuffer};
-use cross_usb::context::{UsbDevice, UsbInterface};
+use cross_usb::{UsbDevice, UsbInterface};
 use cross_usb::usb::{ControlIn, ControlOut, ControlType, Device, Interface, Recipient};
 //use nusb::{Device, DeviceInfo, Interface};
 
@@ -328,7 +328,7 @@ impl NetMD {
         Ok(final_result)
     }
 
-    pub async fn write_bulk(&mut self, data: Vec<u8>) -> Result<usize, Box<dyn Error>> {
+    pub async fn write_bulk(&mut self, data: &[u8]) -> Result<usize, Box<dyn Error>> {
         self.usb_interface.bulk_out(BULK_WRITE_ENDPOINT, data).await
     }
 }

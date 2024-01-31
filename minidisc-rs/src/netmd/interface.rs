@@ -5,6 +5,7 @@ use crate::netmd::utils::{
     half_width_to_full_width_range, length_after_encoding_to_jis, sanitize_full_width_title,
     sanitize_half_width_title, time_to_duration,
 };
+use cross_usb::UsbDevice;
 use encoding_rs::*;
 use hex;
 use magic_crypt::{new_magic_crypt, MagicCrypt, MagicCryptTrait, SecureBit};
@@ -204,7 +205,7 @@ impl NetMDInterface {
     const MAX_INTERIM_READ_ATTEMPTS: u8 = 4;
     const INTERIM_RESPONSE_RETRY_INTERVAL: u32 = 100;
 
-    pub async fn new(device: &cross_usb::context::UsbDevice) -> Result<Self, Box<dyn Error>> {
+    pub async fn new(device: &UsbDevice) -> Result<Self, Box<dyn Error>> {
         let net_md_device = base::NetMD::new(device).await?;
         Ok(NetMDInterface { net_md_device })
     }
@@ -1042,7 +1043,7 @@ impl NetMDInterface {
                 (3, Descriptor::AudioUTOC4TD)
             }
             false => {
-                new_title = sanitize_half_width_title(title.clone());
+                new_title = sanitize_half_width_title(title);
                 (2, Descriptor::AudioUTOC1TD)
             }
         };
@@ -1533,7 +1534,7 @@ impl NetMDInterface {
             } else {
                 data.clone()
             };
-            self.net_md_device.write_bulk(binpack).await?;
+            self.net_md_device.write_bulk(&binpack).await?;
             _written_bytes += data.len();
         }
 
