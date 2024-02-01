@@ -10,9 +10,9 @@ license = "AGPL-3.0"
 
 [dependencies]
 hex = "0.4.3"
-nusb = "0.1.4"
-tokio = { version = "1.35.1", features = ["full"] }
+cross_usb = "0.1"
+tokio = { version = "1.35.1", features = ["macros", "rt", "rt-multi-thread"] }
 
-[dependencies.minidisc-rs]
+[dependencies.minidisc_rs]
 path = "minidisc-rs"
 version = "0.0.1"

@@ -8,6 +8,15 @@ use unicode_normalization::UnicodeNormalization;
 extern crate kana;
 use kana::*;
 
+/// Sleep for a specified number of milliseconds on any platform
+pub async fn cross_sleep(millis: u32) {
+    #[cfg(not(target_family = "wasm"))]
+    std::thread::sleep(std::time::Duration::from_millis(millis as u64));
+
+    #[cfg(target_family = "wasm")]
+    gloo::timers::future::TimeoutFuture::new(millis).await;
+}
+
 pub fn bcd_to_int(mut bcd: i32) -> i32 {
     let mut value = 0;
     let mut nibble = 0;
@@ -89,15 +98,13 @@ fn check(string: String) -> Option<String> {
     None
 }
 
-pub fn sanitize_half_width_title(mut title: String) -> Vec<u8> {
-    title = wide2ascii(&title);
-    title = nowidespace(&title);
-    title = hira2kata(&title);
-    title = combine(&title);
+pub fn sanitize_half_width_title(title: &str) -> Vec<u8> {
+    let mut string_title = wide2ascii(title);
+    string_title = nowidespace(&string_title);
+    string_title = hira2kata(&string_title);
+    string_title = combine(&string_title);
 
-    println!("{}", title);
-
-    let new_title: String = title
+    let new_title: String = string_title
         .chars()
         .map(|c| {
             check(c.to_string()).unwrap_or(
@@ -109,7 +116,7 @@ pub fn sanitize_half_width_title(mut title: String) -> Vec<u8> {
     let sjis_string = SHIFT_JIS.encode(&new_title).0;
 
     if validate_shift_jis(sjis_string.clone().into()) {
-        return agressive_sanitize_title(&title).into();
+        return agressive_sanitize_title(title).into();
     }
 
     sjis_string.into()

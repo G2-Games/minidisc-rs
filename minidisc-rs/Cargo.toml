@@ -1,5 +1,5 @@
 [package]
-name = "minidisc-rs"
+name = "minidisc_rs"
 version = "0.0.1"
 homepage = "https://github.com/G2-Games/minidisc-cli/"
 repository = "https://github.com/G2-Games/minidisc-cli/minidisc-rs/"
@@ -21,7 +21,7 @@ unicode-normalization = "0.1.22"
 hex = "0.4.3"
 regex = "1.10.2"
 lazy_static = "1.4.0"
-nusb = "0.1.4"
+cross_usb = "0.1"
 num-derive = "0.3.3"
 num-traits = "0.2.14"
 rand = "0.8.5"
@@ -31,5 +31,12 @@ getrandom = { version = "0.2.12", features = ["js"] }
 # Relying on this fork for now as it has up-to-date deps
 git = "https://github.com/uzabase/unicode-jp-rs.git"
 
+[target.'cfg(target_family = "wasm")'.dependencies]
+web-sys = { version = "0.3", features = ["console"] }
+gloo = { version = "0.11.0", features = ["futures"] }
+
 [lib]
 crate-type = ["cdylib", "rlib"]
+
+[package.metadata.wasm-pack.profile.dev.wasm-bindgen]
+dwarf-debug-info = true

@@ -1,8 +1,10 @@
-use std::{error::Error, thread::sleep, time::Duration};
+#![cfg_attr(debug_assertions, allow(dead_code))]
+use std::error::Error;
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
 
 use super::interface::{NetMDInterface, MDTrack};
+use super::utils::cross_sleep;
 
 #[derive(FromPrimitive)]
 #[derive(PartialEq)]
@@ -57,20 +59,20 @@ pub async fn device_status(interface: &mut NetMDInterface) -> Result<DeviceStatu
 }
 
 pub async fn prepare_download(interface: &mut NetMDInterface) -> Result<(), Box<dyn Error>>{
-    while ![OperatingStatus::DiscBlank, OperatingStatus::Ready].contains(&device_status(interface).await?.state.or(Some(OperatingStatus::NoDisc)).unwrap()) {
-        sleep(Duration::from_millis(200));
+    while ![OperatingStatus::DiscBlank, OperatingStatus::Ready].contains(&device_status(interface).await?.state.unwrap_or(OperatingStatus::NoDisc)) {
+        cross_sleep(200).await;
     }
 
-    let _ = interface.session_key_forget();
-    let _ = interface.leave_secure_session();
+    let _ = interface.session_key_forget().await;
+    let _ = interface.leave_secure_session().await;
 
     interface.acquire().await?;
-    let _ = interface.disable_new_track_protection(1);
+    let _ = interface.disable_new_track_protection(1).await;
 
     Ok(())
 }
 
-pub async fn download(interface: &mut NetMDInterface, track: MDTrack) -> Result<(), Box<dyn Error>>{
+pub async fn download(interface: &mut NetMDInterface, _track: MDTrack) -> Result<(), Box<dyn Error>>{
     prepare_download(interface).await?;
 
     Ok(())
