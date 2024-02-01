@@ -4,16 +4,12 @@ use once_cell::sync::Lazy;
 use std::error::Error;
 use std::time::Duration;
 
-#[cfg(target_family = "wasm")]
-use gloo::{
-        timers::future::TimeoutFuture,
-        console::log,
-};
-
 // USB stuff
 //use nusb::transfer::{Control, ControlIn, ControlOut, ControlType, Recipient, RequestBuffer};
 use cross_usb::{UsbDevice, UsbInterface};
 use cross_usb::usb::{ControlIn, ControlOut, ControlType, Device, Interface, Recipient};
+
+use super::utils::cross_sleep;
 //use nusb::{Device, DeviceInfo, Interface};
 
 const DEFAULT_TIMEOUT: Duration = Duration::new(10000, 0);
@@ -257,14 +253,10 @@ impl NetMD {
             }
 
             // Back off while trying again
-            let sleep_time = Self::READ_REPLY_RETRY_INTERVAL as u64
-                * (u64::pow(2, attempt as u32 / 10) - 1);
+            let sleep_time = Self::READ_REPLY_RETRY_INTERVAL
+                * (u32::pow(2, attempt / 10) - 1);
 
-            #[cfg(not(target_family = "wasm"))]
-            std::thread::sleep(std::time::Duration::from_millis(sleep_time));
-
-            #[cfg(target_family = "wasm")]
-            TimeoutFuture::new(sleep_time as u32).await;
+            cross_sleep(sleep_time).await;
         }
 
         if let Some(value) = override_length {

@@ -14,18 +14,7 @@ use std::error::Error;
 
 use lazy_static::lazy_static;
 
-#[cfg(target_family = "wasm")]
-use gloo::{
-        timers::future::TimeoutFuture,
-        console::log,
-};
-
-// Blocking stuff - can't use on WASM
-#[cfg(not(arget_family = "wasm"))]
-use std::{
-    thread::sleep,
-    time::Duration,
-};
+use super::utils::cross_sleep;
 
 #[derive(Copy, Clone)]
 enum Action {
@@ -398,15 +387,10 @@ impl NetMDInterface {
                 NetmdStatus::NotImplemented => return Err("Not implemented".into()),
                 NetmdStatus::Rejected => return Err("Rejected".into()),
                 NetmdStatus::Interim if !accept_interim => {
-                    let sleep_time = Self::INTERIM_RESPONSE_RETRY_INTERVAL as u64
-                        * (u64::pow(2, current_attempt as u32) - 1);
+                    let sleep_time = Self::INTERIM_RESPONSE_RETRY_INTERVAL
+                        * (u32::pow(2, current_attempt as u32) - 1);
 
-                    #[cfg(not(target_family = "wasm"))]
-                    sleep(Duration::from_millis(sleep_time));
-
-                    #[cfg(target_family = "wasm")]
-                    TimeoutFuture::new(sleep_time as u32).await;
-
+                    cross_sleep(sleep_time).await;
 
                     current_attempt += 1;
                     continue; // Retry!
@@ -1004,7 +988,7 @@ impl NetMDInterface {
 
         let wchar_value = match wchar {
             true => {
-                new_title = sanitize_full_width_title(&title, false);
+                new_title = sanitize_full_width_title(title, false);
                 1
             }
             false => {
@@ -1055,7 +1039,7 @@ impl NetMDInterface {
         let new_title: Vec<u8>;
         let (wchar_value, descriptor) = match wchar {
             true => {
-                new_title = sanitize_full_width_title(&title, false);
+                new_title = sanitize_full_width_title(title, false);
                 (3, Descriptor::AudioUTOC4TD)
             }
             false => {
@@ -1520,11 +1504,7 @@ impl NetMDInterface {
         }
 
         // Sharps are slow
-        #[cfg(not(target_family = "wasm"))]
-        sleep(Duration::from_millis(200));
-
-        #[cfg(target_family = "wasm")]
-        TimeoutFuture::new(200).await;
+        cross_sleep(200).await;
 
         let total_bytes = pkt_size + 24; //framesizedict[wireformat] * frames + pktcount * 24;
 
@@ -1544,11 +1524,7 @@ impl NetMDInterface {
         )?;
 
         // Sharps are slow
-        #[cfg(not(target_family = "wasm"))]
-        sleep(Duration::from_millis(200));
-
-        #[cfg(target_family = "wasm")]
-        TimeoutFuture::new(200).await;
+        cross_sleep(200).await;
 
         let mut _written_bytes = 0;
         for (packet_count, (key, iv, data)) in packets.into_iter().enumerate() {
