@@ -7,7 +7,6 @@ use crate::netmd::utils::{
 };
 use cbc::cipher::block_padding::NoPadding;
 use cbc::cipher::{KeyIvInit, BlockEncryptMut, BlockDecryptMut, KeyInit};
-use cross_usb::UsbDevice;
 use encoding_rs::SHIFT_JIS;
 use rand::RngCore;
 use std::collections::HashMap;
@@ -1366,7 +1365,7 @@ impl NetMDInterface {
         keychain: [[u8; 16]; 2],
         depth: i32,
         ekbsignature: [u8; 24],
-    ) -> Result<Vec<u8>, Box<dyn Error>> {
+    ) -> Result<(), Box<dyn Error>> {
         let chainlen = keychain.len();
         let databytes = 16 + 16 * chainlen + 24;
 
@@ -1394,12 +1393,12 @@ impl NetMDInterface {
 
         let reply = self.send_query(&mut query, false, false).await?;
 
-        let res = scan_query(
+        scan_query(
             reply,
             "1800 080046 f0030103 12 01 %?%? %?%?%?%?".to_string(),
         )?;
 
-        Ok(res[0].to_vec().unwrap())
+        Ok(())
     }
 
     pub async fn session_key_exchange(
@@ -1710,9 +1709,9 @@ impl MDTrack {
 }
 
 pub struct MDSession {
-    md: NetMDInterface,
-    ekb_object: EKBOpenSource,
-    hex_session_key: Option<Vec<u8>>,
+    pub md: NetMDInterface,
+    pub ekb_object: EKBOpenSource,
+    pub hex_session_key: Option<Vec<u8>>,
 }
 
 impl MDSession {
@@ -1722,7 +1721,7 @@ impl MDSession {
 
         let ekb = self.ekb_object.ekb_data_for_leaf_id();
         self.md.send_key_data(self.ekb_object.ekb_id(), ekb.chains, ekb.depth, ekb.signature).await?;
-        let mut nonce = vec![0u8, 8];
+        let mut nonce = vec![0u8; 8];
         rand::thread_rng().fill_bytes(&mut nonce);
 
         let mut devnonce = self.md.session_key_exchange(nonce.clone()).await?;
