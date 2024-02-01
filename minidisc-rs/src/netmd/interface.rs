@@ -5,7 +5,6 @@ use crate::netmd::utils::{
     half_width_to_full_width_range, length_after_encoding_to_jis, sanitize_full_width_title,
     sanitize_half_width_title, time_to_duration,
 };
-use cross_usb::UsbDevice;
 use encoding_rs::*;
 use hex;
 use magic_crypt::{new_magic_crypt, MagicCrypt, MagicCryptTrait, SecureBit};
@@ -14,8 +13,19 @@ use std::collections::HashMap;
 use std::error::Error;
 
 use lazy_static::lazy_static;
-use std::thread::sleep;
-use std::time::Duration;
+
+#[cfg(target_family = "wasm")]
+use gloo::{
+        timers::future::TimeoutFuture,
+        console::log,
+};
+
+// Blocking stuff - can't use on WASM
+#[cfg(not(arget_family = "wasm"))]
+use std::{
+    thread::sleep,
+    time::Duration,
+};
 
 #[derive(Copy, Clone)]
 enum Action {
@@ -205,7 +215,7 @@ impl NetMDInterface {
     const MAX_INTERIM_READ_ATTEMPTS: u8 = 4;
     const INTERIM_RESPONSE_RETRY_INTERVAL: u32 = 100;
 
-    pub async fn new(device: &UsbDevice) -> Result<Self, Box<dyn Error>> {
+    pub async fn new(device: &cross_usb::UsbDevice) -> Result<Self, Box<dyn Error>> {
         let net_md_device = base::NetMD::new(device).await?;
         Ok(NetMDInterface { net_md_device })
     }
@@ -390,8 +400,14 @@ impl NetMDInterface {
                 NetmdStatus::Interim if !accept_interim => {
                     let sleep_time = Self::INTERIM_RESPONSE_RETRY_INTERVAL as u64
                         * (u64::pow(2, current_attempt as u32) - 1);
-                    let sleep_dur = std::time::Duration::from_millis(sleep_time);
-                    std::thread::sleep(sleep_dur); // Sleep to wait before retrying
+
+                    #[cfg(not(target_family = "wasm"))]
+                    sleep(Duration::from_millis(sleep_time));
+
+                    #[cfg(target_family = "wasm")]
+                    TimeoutFuture::new(sleep_time as u32).await;
+
+
                     current_attempt += 1;
                     continue; // Retry!
                 }
@@ -1504,7 +1520,11 @@ impl NetMDInterface {
         }
 
         // Sharps are slow
+        #[cfg(not(target_family = "wasm"))]
         sleep(Duration::from_millis(200));
+
+        #[cfg(target_family = "wasm")]
+        TimeoutFuture::new(200).await;
 
         let total_bytes = pkt_size + 24; //framesizedict[wireformat] * frames + pktcount * 24;
 
@@ -1524,7 +1544,11 @@ impl NetMDInterface {
         )?;
 
         // Sharps are slow
+        #[cfg(not(target_family = "wasm"))]
         sleep(Duration::from_millis(200));
+
+        #[cfg(target_family = "wasm")]
+        TimeoutFuture::new(200).await;
 
         let mut _written_bytes = 0;
         for (packet_count, (key, iv, data)) in packets.into_iter().enumerate() {

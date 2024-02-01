@@ -265,8 +265,6 @@ impl NetMD {
 
             #[cfg(target_family = "wasm")]
             TimeoutFuture::new(sleep_time as u32).await;
-
-            println!("{}", attempt);
         }
 
         if let Some(value) = override_length {
