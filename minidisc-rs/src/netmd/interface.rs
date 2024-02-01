@@ -5,12 +5,14 @@ use crate::netmd::utils::{
     half_width_to_full_width_range, length_after_encoding_to_jis, sanitize_full_width_title,
     sanitize_half_width_title, time_to_duration,
 };
-use encoding_rs::*;
-use hex;
-use magic_crypt::{new_magic_crypt, MagicCrypt, MagicCryptTrait, SecureBit};
+use cbc::cipher::block_padding::NoPadding;
+use cbc::cipher::{KeyIvInit, BlockEncryptMut, BlockDecryptMut, KeyInit};
+use cross_usb::UsbDevice;
+use encoding_rs::SHIFT_JIS;
 use rand::RngCore;
 use std::collections::HashMap;
 use std::error::Error;
+use std::str::FromStr;
 
 use lazy_static::lazy_static;
 
@@ -1432,7 +1434,7 @@ impl NetMDInterface {
         &mut self,
         contentid: Vec<u8>,
         keyenckey: Vec<u8>,
-        hex_session_key: String,
+        hex_session_key: &[u8],
     ) -> Result<(), Box<dyn Error>> {
         if contentid.len() != 20 {
             return Err("Supplied content ID length wrong".into());
@@ -1444,15 +1446,12 @@ impl NetMDInterface {
             return Err("Supplied Session Key length wrong".into());
         }
 
-        let message = [vec![1, 1, 1, 1], contentid, keyenckey].concat();
-
-        let mc = MagicCrypt::new(hex_session_key, SecureBit::Bit256, None::<String>);
-
-        let encryptedarg = mc.decrypt_bytes_to_bytes(&message)?;
+        let mut message = [vec![1, 1, 1, 1], contentid, keyenckey].concat();
+        DesCbcEnc::new(hex_session_key.into(), &[0u8; 8].into()).encrypt_padded_mut::<NoPadding>(message.as_mut_slice(), 32).unwrap();
 
         let mut query = format_query(
             "1800 080046 f0030103 22 ff 0000 %*".to_string(),
-            vec![QueryValue::Array(encryptedarg)],
+            vec![QueryValue::Array(message)],
         )?;
 
         let reply = self.send_query(&mut query, false, false).await?;
@@ -1465,20 +1464,20 @@ impl NetMDInterface {
     pub async fn commit_track(
         &mut self,
         track_number: u16,
-        hex_session_key: String,
+        hex_session_key: &[u8],
     ) -> Result<(), Box<dyn Error>> {
         if hex_session_key.len() != 16 {
             return Err("Supplied Session Key length wrong".into());
         }
 
-        let mc = new_magic_crypt!(hex::encode(hex_session_key), 256);
-        let authentication = mc.encrypt_str_to_bytes(hex::encode("0000000000000000"));
+        let mut message = [0u8; 8];
+        DesEcbEnc::new(hex_session_key.into()).encrypt_padded_mut::<NoPadding>(&mut message, 8).unwrap();
 
         let mut query = format_query(
             "1800 080046 f0030103 22 ff 0000 %*".to_string(),
             vec![
                 QueryValue::Number(track_number as i64),
-                QueryValue::Array(authentication),
+                QueryValue::Array(Vec::from(message)),
             ],
         )?;
 
@@ -1497,7 +1496,7 @@ impl NetMDInterface {
         pkt_size: u32,
         // key   // iv    // data
         packets: Vec<(Vec<u8>, Vec<u8>, Vec<u8>)>,
-        hex_session_key: String,
+        hex_session_key: &[u8],
     ) -> Result<(i64, String, String), Box<dyn Error>> {
         if hex_session_key.len() != 16 {
             return Err("Supplied Session Key length wrong".into());
@@ -1545,15 +1544,13 @@ impl NetMDInterface {
             "1800 080046 f0030103 28 00 000100 1001 %w 00 %?%? %?%?%?%? %?%?%?%? %*".to_string(),
         )?;
 
-        let mc = MagicCrypt::new(hex_session_key, SecureBit::Bit256, Some("0000000000000000"));
+        let mut encrypted_data = res[1].to_vec().unwrap();
+        DesCbcDec::new(hex_session_key.into(), &[0u8; 8].into()).decrypt_padded_mut::<NoPadding>(&mut encrypted_data).unwrap();
 
-        let reply_data = String::from_utf8(mc.decrypt_bytes_to_bytes(&res[1].to_vec().unwrap())?)
-            .unwrap()
-            .chars()
-            .collect::<Vec<char>>();
+        let reply_data = String::from_utf8(encrypted_data)?;
 
-        let part1 = String::from_iter(reply_data.clone()[0..8].iter());
-        let part2 = String::from_iter(reply_data.clone()[12..32].iter());
+        let part1 = String::from_str(&reply_data[0..8]).unwrap();
+        let part2 = String::from_str(&reply_data[12..32]).unwrap();
 
         Ok((res[0].to_i64().unwrap(), part1, part2))
     }
@@ -1577,22 +1574,31 @@ impl NetMDInterface {
         Ok(())
     }
 }
+type DesEcbEnc = ecb::Encryptor<des::Des>;
+type DesCbcEnc = cbc::Encryptor<des::Des>;
+type DesCbcDec = cbc::Decryptor<des::Des>;
+type TDesCbcEnc = cbc::Encryptor<des::TdesEde3>;
 
-pub fn retailmac(key: Vec<u8>, value: Vec<u8>, iv: Vec<u8>) -> Result<(), Box<dyn Error>> {
-    let subkey_a = key[0..8].to_vec();
-    let beginning = value[0..value.len() - 8].to_vec();
-    let _end = value[value.len() - 8..].to_vec();
+pub fn retailmac(key: &[u8], value: &[u8], iv: &[u8; 8]) -> Vec<u8> {
+    let mut subkey_a = [0u8; 8];
+    subkey_a.clone_from_slice(&key[0..8]);
+    
+    let mut beginning = [0u8; 8];
+    beginning.clone_from_slice(&value[0..8]);
 
-    let mc = MagicCrypt::new(
-        String::from_utf8(subkey_a).unwrap(),
-        SecureBit::Bit256,
-        Some(String::from_utf8(iv).unwrap()),
-    );
-    let step1 = mc.encrypt_bytes_to_bytes(&beginning);
+    let mut end = [0u8; 8];
+    end.clone_from_slice(&value[8..]);
 
-    let _iv2 = String::from_utf8(step1);
+    DesCbcEnc::new(&subkey_a.into(), iv.into()).encrypt_padded_mut::<NoPadding>(&mut beginning, 8).unwrap();
 
-    Ok(())
+    let iv2 = &beginning[beginning.len() - 8..];
+    
+    let mut wonky_key = [0u8; 24];
+    wonky_key[0..16].clone_from_slice(&key);
+    wonky_key[16..].clone_from_slice(&key[0..8]);
+    TDesCbcEnc::new(&wonky_key.into(), iv2.into()).encrypt_padded_mut::<NoPadding>(&mut end, 8).unwrap();
+
+    end[..8].to_vec()
 }
 
 lazy_static! {
@@ -1706,7 +1712,7 @@ impl MDTrack {
 pub struct MDSession {
     md: NetMDInterface,
     ekb_object: EKBOpenSource,
-    hex_session_key: String,
+    hex_session_key: Option<Vec<u8>>,
 }
 
 impl MDSession {
@@ -1719,7 +1725,19 @@ impl MDSession {
         let mut nonce = vec![0u8, 8];
         rand::thread_rng().fill_bytes(&mut nonce);
 
-        // TODO
+        let mut devnonce = self.md.session_key_exchange(nonce.clone()).await?;
+        nonce.append(&mut devnonce);
+        
+        self.hex_session_key = Some(retailmac(&self.ekb_object.root_key(), &nonce, &[0u8; 8]));
+        Ok(())
+    }
+
+    pub async fn close(&mut self) -> Result<(), Box<dyn Error>> {
+        if let None = self.hex_session_key {
+            self.md.session_key_forget().await?;
+        }
+        self.hex_session_key = None;
+
         Ok(())
     }
 }

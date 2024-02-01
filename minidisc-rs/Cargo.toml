@@ -14,7 +14,6 @@ readme = "README.md"
 [dependencies]
 diacritics = "0.2.0"
 encoding_rs = "0.8.33"
-magic-crypt = "3.1.12"
 nofmt = "1.0.0"
 once_cell = "1.18.0"
 unicode-normalization = "0.1.22"
@@ -26,6 +25,9 @@ num-derive = "0.3.3"
 num-traits = "0.2.14"
 rand = "0.8.5"
 getrandom = { version = "0.2.12", features = ["js"] }
+des = "0.8.1"
+cbc = "0.1.2"
+ecb = "0.1.2"
 
 [dependencies.unicode-jp]
 # Relying on this fork for now as it has up-to-date deps
