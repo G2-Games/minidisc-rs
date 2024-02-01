@@ -243,12 +243,19 @@ impl NetMD {
         use_factory_command: bool,
         override_length: Option<i32>,
     ) -> Result<Vec<u8>, Box<dyn Error>> {
-        let mut length = self.poll().await?.0;
+        let mut length = 0;
 
-        for attempt in 0..75 {
-            if attempt == 75 {
+        for attempt in 0..40 {
+            if attempt == 39 {
                 return Err("Failed to get response length".into());
             }
+
+            length = self.poll().await?.0;
+
+            if length > 0 {
+                break
+            }
+
             // Back off while trying again
             let sleep_time = Self::READ_REPLY_RETRY_INTERVAL as u64
                 * (u64::pow(2, attempt as u32 / 10) - 1);
@@ -259,10 +266,7 @@ impl NetMD {
             #[cfg(target_family = "wasm")]
             TimeoutFuture::new(sleep_time as u32).await;
 
-            length = self.poll().await?.0;
-            if length > 0 {
-                break
-            }
+            println!("{}", attempt);
         }
 
         if let Some(value) = override_length {
