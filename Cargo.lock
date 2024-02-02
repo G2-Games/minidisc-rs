@@ -235,12 +235,13 @@ checksum = "06ea2b9bc92be3c2baa9334a323ebca2d6f074ff852cd1d7b11064035cd3868f"
 
 [[package]]
 name = "cross_usb"
-version = "0.1.2"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "589d7b1ec3835e46f62faf18e61d91d9b8c2eb0539184ac5ce26d42154b55b9c"
+checksum = "593be0c698ea71d9cf2a4db52151b93bc35ae24b40e7db8b1580f5169dc3079d"
 dependencies = [
  "js-sys",
  "nusb",
+ "thiserror",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
@@ -811,9 +812,9 @@ dependencies = [
 
 [[package]]
 name = "nusb"
-version = "0.1.5"
+version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a55e7a6cacb59ce4c392f78754ce5b98c73d16a0d2db04c3d7f11d10ac62ec2c"
+checksum = "b5f8adce0565ec457ca66a47721a20c72d180be44f444b6cf9539c47b52c653e"
 dependencies = [
  "atomic-waker",
  "core-foundation",
