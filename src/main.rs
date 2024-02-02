@@ -1,9 +1,16 @@
 use minidisc_rs::netmd::interface;
 use cross_usb::usb::Device;
+use cross_usb::device_filter;
 
 #[tokio::main]
 async fn main() {
-    let device = cross_usb::get_device(0x054c, 0x0186).await.unwrap();
+    // Can find devices this way
+    let filter = vec![
+        device_filter!{vendor_id:0x054c,product_id:0x0186}, // MZ-NH600
+        device_filter!{vendor_id:0x054c,product_id:0x00c9}, // MZ-NF610
+    ];
+
+    let device = cross_usb::get_device_filter(filter).await.expect("No device found matching critera");
 
     dbg!(device.vendor_id().await);
 

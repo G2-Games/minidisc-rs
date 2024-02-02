@@ -161,7 +161,7 @@ impl NetMD {
             .await
         {
             Ok(size) => size,
-            Err(error) => return Err(error),
+            Err(error) => return Err(error.into()),
         };
 
         let length_bytes = u16::from_le_bytes([poll_result[2], poll_result[3]]);
@@ -215,7 +215,7 @@ impl NetMD {
             .await
         {
             Ok(_) => Ok(()),
-            Err(error) => Err(error),
+            Err(error) => Err(error.into()),
         }
     }
 
@@ -323,6 +323,6 @@ impl NetMD {
     }
 
     pub async fn write_bulk(&mut self, data: &[u8]) -> Result<usize, Box<dyn Error>> {
-        self.usb_interface.bulk_out(BULK_WRITE_ENDPOINT, data).await
+        Ok(self.usb_interface.bulk_out(BULK_WRITE_ENDPOINT, data).await?)
     }
 }
