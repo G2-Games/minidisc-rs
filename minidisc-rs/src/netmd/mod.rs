@@ -9,4 +9,5 @@ pub mod interface;
 mod mappings;
 mod query_utils;
 mod utils;
-mod commands;
+pub mod commands;
+pub mod encryption;

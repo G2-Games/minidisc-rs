@@ -3,7 +3,7 @@ use std::error::Error;
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
 
-use super::interface::{NetMDInterface, MDTrack};
+use super::interface::{NetMDInterface, MDTrack, MDSession};
 use super::utils::cross_sleep;
 
 #[derive(FromPrimitive)]
@@ -72,8 +72,13 @@ pub async fn prepare_download(interface: &mut NetMDInterface) -> Result<(), Box<
     Ok(())
 }
 
-pub async fn download(interface: &mut NetMDInterface, _track: MDTrack) -> Result<(), Box<dyn Error>>{
+pub async fn download<F>(interface: &mut NetMDInterface, track: MDTrack, progress_callback: F) -> Result<(u16, Vec<u8>, Vec<u8>), Box<dyn Error>> where F: Fn(usize, usize){
     prepare_download(interface).await?;
+    let mut session = MDSession::new(interface);
+    session.init().await?;
+    let result = session.download_track(track, progress_callback, None).await?;
+    session.close().await?;
+    interface.release().await?;
 
-    Ok(())
+    Ok(result)
 }

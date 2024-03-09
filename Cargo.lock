@@ -760,6 +760,7 @@ dependencies = [
  "once_cell",
  "rand",
  "regex",
+ "tokio",
  "unicode-jp",
  "unicode-normalization",
  "web-sys",
