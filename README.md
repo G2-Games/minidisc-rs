@@ -3,6 +3,8 @@ A library for controlling and interfacing with [MiniDisc](https://en.wikipedia.o
 
 The feature set is very similar to that of [netmd-js](https://github.com/cybercase/netmd-js) which this library is inspired by. For more information check out the absolutely awesome [Web Minidisc project](https://github.com/asivery/webminidisc), [NetMD-exploits](https://github.com/asivery/netmd-exploits), and the C based [Linux Minidisc project](https://github.com/linux-minidisc/linux-minidisc).
 
+Documentation has not been finished and is a work in progress.
+
 ## Current Features
 ### NetMD
 - [x] Track upload
