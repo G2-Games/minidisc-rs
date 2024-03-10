@@ -22,12 +22,11 @@ pub fn new_thread_encryptor(
         rand::thread_rng().fill_bytes(&mut random_key);
 
         // Encrypt it with the kek
-        let mut encrypted_random_key = random_key.clone();
-        match DesEcbEnc::new(&input.kek.into())
+        let mut encrypted_random_key = random_key;
+        if let Err(x) = DesEcbEnc::new(&input.kek.into())
             .decrypt_padded_mut::<NoPadding>(&mut encrypted_random_key)
         {
-            Err(x) => panic!("Cannot create main key {:?}", x),
-            Ok(_) => {}
+            panic!("Cannot create main key {:?}", x)
         };
 
         let default_chunk_size = match input.chunk_size {

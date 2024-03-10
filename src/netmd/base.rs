@@ -69,6 +69,15 @@ pub static DEVICE_IDS: Lazy<Box<[DeviceId]>> = Lazy::new(|| {
     }
 });
 
+pub static DEVICE_IDS_CROSSUSB: Lazy<Box<[cross_usb::DeviceFilter]>> = Lazy::new(|| {
+    DEVICE_IDS.iter().map(|d|{
+        cross_usb::device_filter! {
+            vendor_id: d.vendor_id,
+            product_id: d.product_id,
+        }
+    }).collect()
+});
+
 /// The current status of the Minidisc device
 pub enum Status {
     Ready,

@@ -1531,6 +1531,7 @@ impl NetMDInterface {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn send_track<F>(
         &mut self,
         wireformat: u8,
@@ -1587,7 +1588,7 @@ impl NetMDInterface {
             _written_bytes += binpack.len();
             packet_count += 1;
             (progress_callback)(total_bytes, _written_bytes);
-            if total_bytes == _written_bytes.try_into().unwrap() {
+            if total_bytes == _written_bytes {
                 packets.close();
                 break;
             }
@@ -1652,7 +1653,7 @@ pub fn retailmac(key: &[u8], value: &[u8], iv: &[u8; 8]) -> Vec<u8> {
     let iv2 = &beginning[beginning.len() - 8..];
 
     let mut wonky_key = [0u8; 24];
-    wonky_key[0..16].clone_from_slice(&key);
+    wonky_key[0..16].clone_from_slice(key);
     wonky_key[16..].clone_from_slice(&key[0..8]);
     TDesCbcEnc::new(&wonky_key.into(), iv2.into())
         .encrypt_padded_mut::<NoPadding>(&mut end, 8)
@@ -1717,6 +1718,8 @@ pub struct MDTrack {
     pub data: Vec<u8>,
     pub chunk_size: usize,
     pub full_width_title: Option<String>,
+
+    #[allow(clippy::type_complexity)]
     pub encrypt_packets_iterator:
         Box<dyn Fn(DataEncryptorInput) -> UnboundedReceiver<(Vec<u8>, Vec<u8>, Vec<u8>)>>,
 }
@@ -1775,7 +1778,7 @@ impl MDTrack {
 
     pub fn get_encrypting_iterator(&mut self) -> UnboundedReceiver<(Vec<u8>, Vec<u8>, Vec<u8>)> {
         (self.encrypt_packets_iterator)(DataEncryptorInput {
-            kek: self.get_kek().clone(),
+            kek: self.get_kek(),
             frame_size: self.frame_size(),
             chunk_size: self.chunk_size(),
             data: std::mem::take(&mut self.data),
@@ -1814,7 +1817,7 @@ impl<'a> MDSession<'a> {
     }
 
     pub async fn close(&mut self) -> Result<(), Box<dyn Error>> {
-        if let None = self.hex_session_key {
+        if self.hex_session_key.is_none() {
             self.md.session_key_forget().await?;
         }
         self.hex_session_key = None;
@@ -1831,14 +1834,14 @@ impl<'a> MDSession<'a> {
     where
         F: Fn(usize, usize),
     {
-        if let None = self.hex_session_key {
+        if self.hex_session_key.is_none() {
             return Err("Cannot download a track using a non-init()'ed session!".into());
         }
         self.md
             .setup_download(
                 &track.content_id(),
                 &track.get_kek(),
-                &self.hex_session_key.as_ref().unwrap(),
+                self.hex_session_key.as_ref().unwrap(),
             )
             .await?;
         let data_format = track.data_format();
@@ -1866,7 +1869,7 @@ impl<'a> MDSession<'a> {
                 .await?;
         }
         self.md
-            .commit_track(track_index, &self.hex_session_key.as_ref().unwrap())
+            .commit_track(track_index, self.hex_session_key.as_ref().unwrap())
             .await?;
 
         Ok((track_index, uuid, ccid))

@@ -173,7 +173,7 @@ pub fn agressive_sanitize_title(title: &str) -> String {
     .into()
 }
 
-pub fn time_to_duration(time: &Vec<u64>) -> std::time::Duration {
+pub fn time_to_duration(time: &[u64]) -> std::time::Duration {
     assert_eq!(time.len(), 4);
     std::time::Duration::from_micros(
         (time[0] * 3600000000) + (time[1] * 60000000) + (time[2] * 1000000) + (time[3] * 11600),
