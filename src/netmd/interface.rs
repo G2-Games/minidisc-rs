@@ -206,6 +206,7 @@ impl NetMDInterface {
     const MAX_INTERIM_READ_ATTEMPTS: u8 = 4;
     const INTERIM_RESPONSE_RETRY_INTERVAL: u32 = 100;
 
+    /// Get a new interface to a NetMD device
     pub async fn new(device: &cross_usb::UsbDevice) -> Result<Self, Box<dyn Error>> {
         let net_md_device = base::NetMD::new(device).await?;
         Ok(NetMDInterface { net_md_device })
@@ -430,23 +431,28 @@ impl NetMDInterface {
         Ok(())
     }
 
+    /// Begin playback or resume after paused
     pub async fn play(&mut self) -> Result<(), Box<dyn Error>> {
         self.playback_control(Action::Play).await
     }
 
+    /// Fast foward through the disc
     pub async fn fast_forward(&mut self) -> Result<(), Box<dyn Error>> {
         self.playback_control(Action::FastForward).await
     }
 
+    /// Rewind through the disc
     pub async fn rewind(&mut self) -> Result<(), Box<dyn Error>> {
         self.playback_control(Action::Rewind).await
     }
 
+    /// Pause playback
     pub async fn pause(&mut self) -> Result<(), Box<dyn Error>> {
         self.playback_control(Action::Pause).await
     }
 
     //TODO: Implement fix for LAM-1
+    /// Stop playback
     pub async fn stop(&mut self) -> Result<(), Box<dyn Error>> {
         let mut query = format_query("18c5 ff 00000000".to_string(), vec![])?;
 
@@ -503,6 +509,7 @@ impl NetMDInterface {
         Ok(final_array)
     }
 
+    /// Check if a disc is loaded in the player
     pub async fn disc_present(&mut self) -> Result<bool, Box<dyn Error>> {
         let status = self.status().await?;
 
@@ -585,6 +592,7 @@ impl NetMDInterface {
         self.playback_status_query(0x8802, 0x8806).await
     }
 
+    /// Get the current playback position
     pub async fn position(&mut self) -> Result<[u16; 5], Box<dyn Error>> {
         self.change_descriptor_state(
             &Descriptor::OperatingStatusBlock,
@@ -620,6 +628,7 @@ impl NetMDInterface {
         Ok(final_result)
     }
 
+    /// Eject the disc from the player if supported
     pub async fn eject_disc(&mut self) -> Result<(), Box<dyn Error>> {
         let mut query = format_query("18c1 ff 6000".to_string(), vec![]).unwrap();
 
@@ -627,6 +636,7 @@ impl NetMDInterface {
         Ok(())
     }
 
+    /// Check if the machine has the capability to eject a disc
     pub async fn can_eject_disc(&mut self) -> Result<bool, Box<dyn Error>> {
         let mut query = format_query("18c1 ff 6000".to_string(), vec![]).unwrap();
 
@@ -636,7 +646,7 @@ impl NetMDInterface {
         }
     }
 
-    /* Track control */
+    /// Move the playback to a specific track
     pub async fn go_to_track(&mut self, track_number: u16) -> Result<u16, Box<dyn Error>> {
         let mut query = format_query(
             "1850 ff010000 0000 %w".to_string(),
@@ -653,6 +663,7 @@ impl NetMDInterface {
         Ok(value as u16)
     }
 
+    /// Move the playback to a specific time
     pub async fn go_to_time(
         &mut self,
         track_number: u16,
@@ -703,15 +714,15 @@ impl NetMDInterface {
 
     /// Change to the next track (skip back)
     pub async fn previous_track(&mut self) -> Result<(), Box<dyn Error>> {
-        self.track_change(Track::Next).await
+        self.track_change(Track::Previous).await
     }
 
     /// Change to the next track (skip to beginning of track)
     pub async fn restart_track(&mut self) -> Result<(), Box<dyn Error>> {
-        self.track_change(Track::Next).await
+        self.track_change(Track::Restart).await
     }
 
-    /* Content access and control */
+    /// Erase the disc entirely
     pub async fn erase_disc(&mut self) -> Result<(), Box<dyn Error>> {
         let mut query = format_query("1840 ff 0000".to_string(), vec![]).unwrap();
         let reply = self.send_query(&mut query, false, false).await?;
@@ -758,6 +769,7 @@ impl NetMDInterface {
         Ok(res[0].to_i64().unwrap() as u16)
     }
 
+    /// Gets the disc title as it is stored
     async fn raw_disc_title(&mut self, wchar: bool) -> Result<String, Box<dyn Error>> {
         self.change_descriptor_state(&Descriptor::AudioContentsTD, &DescriptorAction::OpenRead)
             .await;
@@ -1114,7 +1126,7 @@ impl NetMDInterface {
         Ok(())
     }
 
-    /// Removes a track from the UTOC
+    /// Erases a track from the disc's UTOC
     pub async fn erase_track(&mut self, track: u16) -> Result<(), Box<dyn Error>> {
         let mut query = format_query(
             "1840 ff01 00 201001 %w".to_string(),
@@ -1126,7 +1138,7 @@ impl NetMDInterface {
         Ok(())
     }
 
-    /// Moves a track to another position on the disc
+    /// Moves a track to another index on the disc
     pub async fn move_track(&mut self, source: u16, dest: u16) -> Result<(), Box<dyn Error>> {
         let mut query = format_query(
             "1843 ff00 00 201001 %w 201001 %w".to_string(),
@@ -1141,6 +1153,7 @@ impl NetMDInterface {
         Ok(())
     }
 
+    /// Raw information about a track
     async fn raw_track_info(
         &mut self,
         track: u16,
@@ -1171,7 +1184,7 @@ impl NetMDInterface {
         Ok(res[0].to_vec().unwrap())
     }
 
-    /// Gets the length of tracks as a `std::time::Duration` from a set
+    /// Gets the length of tracks as a [std::time::Duration] from a set
     pub async fn track_lengths(
         &mut self,
         tracks: Vec<u16>,
@@ -1217,7 +1230,7 @@ impl NetMDInterface {
         Ok(times)
     }
 
-    /// Gets the length of a track as a `std::time::Duration`
+    /// Gets the length of a track as a [std::time::Duration]
     pub async fn track_length(
         &mut self,
         track: u16,
@@ -1259,7 +1272,7 @@ impl NetMDInterface {
         Ok(res[0].to_i64().unwrap() as u8)
     }
 
-    /// Gets the disc capacity as a `std::time::Duration`
+    /// Gets the disc capacity as a [std::time::Duration]
     pub async fn disc_capacity(&mut self) -> Result<[std::time::Duration; 3], Box<dyn Error>> {
         self.change_descriptor_state(&Descriptor::RootTD, &DescriptorAction::OpenRead)
             .await;
@@ -1382,21 +1395,19 @@ impl NetMDInterface {
         Ok(())
     }
 
-    /**
-     * Read the leaf ID of the present NetMD device. The leaf ID tells
-     * which keys the device posesses, which is needed to find out which
-     * parts of the EKB needs to be sent to the device for it to decrypt
-     * the root key.
-     *
-     * The leaf ID is a 8-byte constant
-     **/
-    pub async fn leaf_id(&mut self) -> Result<Vec<u8>, Box<dyn Error>> {
+    /// Read the leaf ID of the present NetMD device. The leaf ID tells
+    /// which keys the device posesses, which is needed to find out which
+    /// parts of the EKB needs to be sent to the device for it to decrypt
+    /// the root key.
+    ///
+    /// The leaf ID is a 8-byte constant
+    pub async fn leaf_id(&mut self) -> Result<[u8; 8], Box<dyn Error>> {
         let mut query = format_query("1800 080046 f0030103 11 ff".to_string(), vec![])?;
 
         let reply = self.send_query(&mut query, false, false).await?;
         let res = scan_query(reply, "1800 080046 f0030103 11 00 %*".to_string())?;
 
-        Ok(res[0].to_vec().unwrap())
+        Ok(res[0].to_vec().unwrap().try_into().unwrap())
     }
 
     pub async fn send_key_data(
