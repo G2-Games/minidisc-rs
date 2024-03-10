@@ -8,10 +8,11 @@ use crate::netmd::utils::{
 use cbc::cipher::block_padding::NoPadding;
 use cbc::cipher::{KeyIvInit, BlockEncryptMut, BlockDecryptMut, KeyInit};
 use encoding_rs::SHIFT_JIS;
+use num_derive::FromPrimitive;
 use rand::RngCore;
+use tokio::sync::mpsc::UnboundedReceiver;
 use std::collections::HashMap;
 use std::error::Error;
-use std::str::FromStr;
 
 use lazy_static::lazy_static;
 
@@ -31,7 +32,7 @@ enum Track {
     Restart = 0x0001,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, FromPrimitive)]
 pub enum DiscFormat {
     LP4 = 0,
     LP2 = 2,
@@ -39,7 +40,7 @@ pub enum DiscFormat {
     SPStereo = 6,
 }
 
-#[derive(Clone, Hash, Eq, PartialEq)]
+#[derive(Clone, Hash, Eq, PartialEq, FromPrimitive)]
 pub enum WireFormat {
     Pcm = 0x00,
     L105kbps = 0x90,
@@ -391,6 +392,7 @@ impl NetMDInterface {
                     let sleep_time = Self::INTERIM_RESPONSE_RETRY_INTERVAL
                         * (u32::pow(2, current_attempt as u32) - 1);
 
+
                     cross_sleep(sleep_time).await;
 
                     current_attempt += 1;
@@ -459,7 +461,7 @@ impl NetMDInterface {
         Ok(())
     }
 
-    async fn release(&mut self) -> Result<(), Box<dyn Error>> {
+    pub async fn release(&mut self) -> Result<(), Box<dyn Error>> {
         let mut query = format_query("ff 0100 ffff ffff ffff ffff ffff ffff".to_string(), vec![])?;
 
         let reply = self.send_query(&mut query, false, false).await?;
@@ -1431,8 +1433,8 @@ impl NetMDInterface {
 
     pub async fn setup_download(
         &mut self,
-        contentid: Vec<u8>,
-        keyenckey: Vec<u8>,
+        contentid: &[u8],
+        keyenckey: &[u8],
         hex_session_key: &[u8],
     ) -> Result<(), Box<dyn Error>> {
         if contentid.len() != 20 {
@@ -1441,11 +1443,11 @@ impl NetMDInterface {
         if keyenckey.len() != 8 {
             return Err("Supplied Key Encryption Key length wrong".into());
         }
-        if hex_session_key.len() != 16 {
+        if hex_session_key.len() != 8 {
             return Err("Supplied Session Key length wrong".into());
         }
 
-        let mut message = [vec![1, 1, 1, 1], contentid, keyenckey].concat();
+        let mut message = [vec![1, 1, 1, 1], contentid.to_vec(), keyenckey.to_vec()].concat();
         DesCbcEnc::new(hex_session_key.into(), &[0u8; 8].into()).encrypt_padded_mut::<NoPadding>(message.as_mut_slice(), 32).unwrap();
 
         let mut query = format_query(
@@ -1465,7 +1467,7 @@ impl NetMDInterface {
         track_number: u16,
         hex_session_key: &[u8],
     ) -> Result<(), Box<dyn Error>> {
-        if hex_session_key.len() != 16 {
+        if hex_session_key.len() != 8 {
             return Err("Supplied Session Key length wrong".into());
         }
 
@@ -1473,7 +1475,7 @@ impl NetMDInterface {
         DesEcbEnc::new(hex_session_key.into()).encrypt_padded_mut::<NoPadding>(&mut message, 8).unwrap();
 
         let mut query = format_query(
-            "1800 080046 f0030103 22 ff 0000 %*".to_string(),
+            "1800 080046 f0030103 48 ff 00 1001 %w %*".to_string(),
             vec![
                 QueryValue::Number(track_number as i64),
                 QueryValue::Array(Vec::from(message)),
@@ -1482,29 +1484,30 @@ impl NetMDInterface {
 
         let reply = self.send_query(&mut query, false, false).await?;
 
-        scan_query(reply, "1800 080046 f0030103 22 00 0000".to_string())?;
+        scan_query(reply, "1800 080046 f0030103 48 00 00 1001 %?%?".to_string())?;
 
         Ok(())
     }
 
-    pub async fn send_track(
+    pub async fn send_track<F>(
         &mut self,
         wireformat: u8,
         discformat: u8,
-        frames: i32,
+        frames: u32,
         pkt_size: u32,
         // key   // iv    // data
-        packets: Vec<(Vec<u8>, Vec<u8>, Vec<u8>)>,
+        mut packets: UnboundedReceiver<(Vec<u8>, Vec<u8>, Vec<u8>)>,
         hex_session_key: &[u8],
-    ) -> Result<(i64, String, String), Box<dyn Error>> {
-        if hex_session_key.len() != 16 {
+        progress_callback: F
+    ) -> Result<(u16, Vec<u8>, Vec<u8>), Box<dyn Error>> where F: Fn(usize, usize) {
+        if hex_session_key.len() != 8 {
             return Err("Supplied Session Key length wrong".into());
         }
 
         // Sharps are slow
         cross_sleep(200).await;
 
-        let total_bytes = pkt_size + 24; //framesizedict[wireformat] * frames + pktcount * 24;
+        let total_bytes: usize = (pkt_size + 24) as usize; //framesizedict[wireformat] * frames + pktcount * 24;
 
         let mut query = format_query(
             "1800 080046 f0030103 28 ff 000100 1001 ffff 00 %b %b %d %d".to_string(),
@@ -1520,20 +1523,29 @@ impl NetMDInterface {
             reply,
             "1800 080046 f0030103 28 00 000100 1001 %?%? 00 %*".to_string(),
         )?;
+        self.net_md_device.poll().await?;
 
         // Sharps are slow
         cross_sleep(200).await;
 
         let mut _written_bytes = 0;
-        for (packet_count, (key, iv, data)) in packets.into_iter().enumerate() {
+        let mut packet_count = 0;
+        
+        while let Some((key, iv, data)) = packets.recv().await {
             let binpack = if packet_count == 0 {
-                let packed_length: Vec<u8> = pkt_size.to_le_bytes().to_vec();
-                [vec![0, 0, 0, 0], packed_length, key, iv, data.clone()].concat()
+                let packed_length: Vec<u8> = pkt_size.to_be_bytes().to_vec();
+                [vec![0, 0, 0, 0], packed_length, key, iv, data].concat()
             } else {
-                data.clone()
+                data
             };
             self.net_md_device.write_bulk(&binpack).await?;
-            _written_bytes += data.len();
+            _written_bytes += binpack.len();
+            packet_count += 1;
+            (progress_callback)(total_bytes, _written_bytes);
+            if total_bytes == _written_bytes.try_into().unwrap() {
+                packets.close();
+                break;
+            }
         }
 
         reply = self.read_reply(false).await?;
@@ -1546,12 +1558,10 @@ impl NetMDInterface {
         let mut encrypted_data = res[1].to_vec().unwrap();
         DesCbcDec::new(hex_session_key.into(), &[0u8; 8].into()).decrypt_padded_mut::<NoPadding>(&mut encrypted_data).unwrap();
 
-        let reply_data = String::from_utf8(encrypted_data)?;
+        let part1 = encrypted_data[0..8].to_vec();
+        let part2 = encrypted_data[12..32].to_vec();
 
-        let part1 = String::from_str(&reply_data[0..8]).unwrap();
-        let part2 = String::from_str(&reply_data[12..32]).unwrap();
-
-        Ok((res[0].to_i64().unwrap(), part1, part2))
+        Ok((res[0].to_i64().unwrap() as u16, part1, part2))
     }
 
     pub async fn track_uuid(&mut self, track: u16) -> Result<String, Box<dyn Error>> {
@@ -1644,22 +1654,20 @@ impl EKBOpenSource {
     }
 }
 
-#[derive(Clone)]
 pub struct MDTrack {
-    title: String,
-    format: WireFormat,
-    data: Vec<u8>,
-    chunk_size: i32,
-    full_width_title: Option<String>,
-    encrypt_packets_iterator: EncryptPacketsIterator,
+    pub title: String,
+    pub format: WireFormat,
+    pub data: Vec<u8>,
+    pub chunk_size: usize,
+    pub full_width_title: Option<String>,
+    pub encrypt_packets_iterator: Box<dyn Fn(DataEncryptorInput) -> UnboundedReceiver<(Vec<u8>, Vec<u8>, Vec<u8>)>>,
 }
 
-#[derive(Clone)]
-pub struct EncryptPacketsIterator {
-    kek: Vec<u8>,
-    frame_size: i32,
-    data: Vec<u8>,
-    chunk_size: i32,
+pub struct DataEncryptorInput {
+    pub kek: [u8; 8],
+    pub frame_size: usize,
+    pub data: Vec<u8>,
+    pub chunk_size: usize,
 }
 
 impl MDTrack {
@@ -1683,7 +1691,7 @@ impl MDTrack {
         *FRAME_SIZE.get(&self.format).unwrap()
     }
 
-    pub fn chunk_size(self) -> i32 {
+    pub fn chunk_size(&self) -> usize {
         self.chunk_size
     }
 
@@ -1696,25 +1704,34 @@ impl MDTrack {
         len
     }
 
-    pub fn content_id() -> [u8; 20] {
+    pub fn content_id(&self) -> [u8; 20] {
         [
             0x01, 0x0f, 0x50, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x48, 0xa2, 0x8d, 0x3e, 0x1a,
             0x3b, 0x0c, 0x44, 0xaf, 0x2f, 0xa0,
         ]
     }
 
-    pub fn get_kek() -> [u8; 8] {
+    pub fn get_kek(&self) -> [u8; 8] {
         [0x14, 0xe3, 0x83, 0x4e, 0xe2, 0xd3, 0xcc, 0xa5]
+    }
+
+    pub fn get_encrypting_iterator(&mut self) -> UnboundedReceiver<(Vec<u8>, Vec<u8>, Vec<u8>)>{
+        (self.encrypt_packets_iterator)(DataEncryptorInput {
+            kek: self.get_kek().clone(),
+            frame_size: self.frame_size(),
+            chunk_size: self.chunk_size(),
+            data: std::mem::take(&mut self.data)
+        })
     }
 }
 
-pub struct MDSession {
-    pub md: NetMDInterface,
+pub struct MDSession<'a> {
+    pub md: &'a mut NetMDInterface,
     pub ekb_object: EKBOpenSource,
     pub hex_session_key: Option<Vec<u8>>,
 }
 
-impl MDSession {
+impl<'a> MDSession<'a> {
     pub async fn init(&mut self) -> Result<(), Box<dyn Error>>{
         self.md.enter_secure_session().await?;
         self.md.leaf_id().await?;
@@ -1738,5 +1755,41 @@ impl MDSession {
         self.hex_session_key = None;
 
         Ok(())
+    }
+
+    pub async fn download_track<F>(&mut self, mut track: MDTrack, progress_callback: F, disc_format: Option<DiscFormat>) -> Result<(u16, Vec<u8>, Vec<u8>), Box<dyn Error>> where F: Fn(usize, usize) {
+        if let None = self.hex_session_key{
+            return Err("Cannot download a track using a non-init()'ed session!".into());
+
+        }
+        self.md.setup_download(&track.content_id(), &track.get_kek(), &self.hex_session_key.as_ref().unwrap()).await?;
+        let data_format = track.data_format();
+        let final_disc_format = disc_format.unwrap_or(*DISC_FOR_WIRE.get(&data_format).unwrap());
+
+        let (track_index, uuid, ccid) = self.md.send_track(
+            data_format as u8,
+            final_disc_format as u8,
+            track.frame_count() as u32,
+            track.total_size() as u32,
+            track.get_encrypting_iterator(),
+            self.hex_session_key.as_ref().unwrap().as_slice(),
+            progress_callback
+        ).await?;
+
+        self.md.set_track_title(track_index, &track.title, false).await?;
+        if let Some(full_width) = track.full_width_title {
+            self.md.set_track_title(track_index, &full_width, true).await?;
+        }
+        self.md.commit_track(track_index, &self.hex_session_key.as_ref().unwrap()).await?;
+
+        Ok((track_index, uuid, ccid))
+    }
+
+    pub fn new(md: &'a mut NetMDInterface) -> Self {
+        MDSession {
+            md,
+            ekb_object: EKBOpenSource {},
+            hex_session_key: None,
+        }
     }
 }

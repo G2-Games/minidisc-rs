@@ -254,7 +254,7 @@ impl NetMD {
 
             // Back off while trying again
             let sleep_time = Self::READ_REPLY_RETRY_INTERVAL
-                * (u32::pow(2, attempt / 10) - 1);
+                * (u32::pow(2, attempt) - 1);
 
             cross_sleep(sleep_time).await;
         }

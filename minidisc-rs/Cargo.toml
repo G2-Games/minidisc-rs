@@ -28,6 +28,7 @@ getrandom = { version = "0.2.12", features = ["js"] }
 des = "0.8.1"
 cbc = "0.1.2"
 ecb = "0.1.2"
+tokio = { version = "1.35.1", features = ["sync"] }
 
 [dependencies.unicode-jp]
 # Relying on this fork for now as it has up-to-date deps
