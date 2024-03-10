@@ -585,11 +585,11 @@ impl NetMDInterface {
     }
 
     pub async fn playback_status1(&mut self) -> Result<Vec<u8>, Box<dyn Error>> {
-        self.playback_status_query(0x8801, 0x8807).await
+        Ok(self.playback_status_query(0x8801, 0x8807).await?)
     }
 
     pub async fn playback_status2(&mut self) -> Result<Vec<u8>, Box<dyn Error>> {
-        self.playback_status_query(0x8802, 0x8806).await
+        Ok(self.playback_status_query(0x8802, 0x8806).await?)
     }
 
     /// Get the current playback position
