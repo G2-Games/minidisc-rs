@@ -568,20 +568,19 @@ impl NetMDInterface {
         let mut query = format_query(
             "1809 8001 0330 %w 0030 8805 0030 %w 00 ff00 00000000".to_string(),
             vec![QueryValue::Number(p1 as i64), QueryValue::Number(p2 as i64)],
-        )
-        .unwrap();
+        )?;
 
         let reply = self.send_query(&mut query, false, false).await?;
 
         let res = scan_query(
             reply,
             "1809 8001 0330 %?%? %?%? %?%? %?%? %?%? %? 1000 00%?0000 %x %?".to_string(),
-        );
+        )?;
 
         self.change_descriptor_state(&Descriptor::OperatingStatusBlock, &DescriptorAction::Close)
             .await;
 
-        Ok(res.unwrap()[0].to_vec().unwrap())
+        Ok(res[0].to_vec().unwrap())
     }
 
     pub async fn playback_status1(&mut self) -> Result<Vec<u8>, Box<dyn Error>> {
