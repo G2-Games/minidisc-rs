@@ -6,8 +6,8 @@ use std::time::Duration;
 
 // USB stuff
 //use nusb::transfer::{Control, ControlIn, ControlOut, ControlType, Recipient, RequestBuffer};
-use cross_usb::{UsbDevice, UsbInterface};
 use cross_usb::usb::{ControlIn, ControlOut, ControlType, Device, Interface, Recipient};
+use cross_usb::{UsbDevice, UsbInterface};
 
 use super::utils::cross_sleep;
 //use nusb::{Device, DeviceInfo, Interface};
@@ -191,9 +191,9 @@ impl NetMD {
         // First poll to ensure the device is ready
         match self.poll().await {
             Ok(buffer) => match buffer.1[2] {
-                    0 => 0,
-                    _ => return Err("Device not ready!".into()),
-                },
+                0 => 0,
+                _ => return Err("Device not ready!".into()),
+            },
             Err(error) => return Err(error),
         };
 
@@ -249,12 +249,11 @@ impl NetMD {
             length = self.poll().await?.0;
 
             if length > 0 {
-                break
+                break;
             }
 
             // Back off while trying again
-            let sleep_time = Self::READ_REPLY_RETRY_INTERVAL
-                * (u32::pow(2, attempt) - 1);
+            let sleep_time = Self::READ_REPLY_RETRY_INTERVAL * (u32::pow(2, attempt) - 1);
 
             cross_sleep(sleep_time).await;
         }
@@ -323,6 +322,9 @@ impl NetMD {
     }
 
     pub async fn write_bulk(&mut self, data: &[u8]) -> Result<usize, Box<dyn Error>> {
-        Ok(self.usb_interface.bulk_out(BULK_WRITE_ENDPOINT, data).await?)
+        Ok(self
+            .usb_interface
+            .bulk_out(BULK_WRITE_ENDPOINT, data)
+            .await?)
     }
 }

@@ -6,13 +6,13 @@ use crate::netmd::utils::{
     sanitize_half_width_title, time_to_duration,
 };
 use cbc::cipher::block_padding::NoPadding;
-use cbc::cipher::{KeyIvInit, BlockEncryptMut, BlockDecryptMut, KeyInit};
+use cbc::cipher::{BlockDecryptMut, BlockEncryptMut, KeyInit, KeyIvInit};
 use encoding_rs::SHIFT_JIS;
 use num_derive::FromPrimitive;
 use rand::RngCore;
-use tokio::sync::mpsc::UnboundedReceiver;
 use std::collections::HashMap;
 use std::error::Error;
+use tokio::sync::mpsc::UnboundedReceiver;
 
 use lazy_static::lazy_static;
 
@@ -226,7 +226,8 @@ impl NetMDInterface {
         self.change_descriptor_state(
             &Descriptor::DiscSubunitIdentifier,
             &DescriptorAction::OpenRead,
-        ).await;
+        )
+        .await;
 
         let mut query = format_query("1809 00 ff00 0000 0000".to_string(), vec![])?;
 
@@ -294,7 +295,8 @@ impl NetMDInterface {
         let _manufacturer_dep_data =
             &buffer[buffer_offset..buffer_offset + manufacturer_dep_length as usize];
 
-        self.change_descriptor_state(&Descriptor::DiscSubunitIdentifier, &DescriptorAction::Close).await;
+        self.change_descriptor_state(&Descriptor::DiscSubunitIdentifier, &DescriptorAction::Close)
+            .await;
 
         for media in supported_media_type_specifications {
             if media.supported_media_type != 0x301 {
@@ -324,7 +326,11 @@ impl NetMDInterface {
         Ok(result)
     }
 
-    async fn change_descriptor_state(&mut self, descriptor: &Descriptor, action: &DescriptorAction) {
+    async fn change_descriptor_state(
+        &mut self,
+        descriptor: &Descriptor,
+        action: &DescriptorAction,
+    ) {
         let mut query = format_query("1808".to_string(), vec![]).unwrap();
 
         query.append(&mut descriptor.get_array());
@@ -391,7 +397,6 @@ impl NetMDInterface {
                 NetmdStatus::Interim if !accept_interim => {
                     let sleep_time = Self::INTERIM_RESPONSE_RETRY_INTERVAL
                         * (u32::pow(2, current_attempt as u32) - 1);
-
 
                     cross_sleep(sleep_time).await;
 
@@ -475,7 +480,8 @@ impl NetMDInterface {
         self.change_descriptor_state(
             &Descriptor::OperatingStatusBlock,
             &DescriptorAction::OpenRead,
-        ).await;
+        )
+        .await;
 
         let mut query = format_query(
             "1809 8001 0230 8800 0030 8804 00 ff00 00000000".to_string(),
@@ -489,7 +495,8 @@ impl NetMDInterface {
             "1809 8001 0230 8800 0030 8804 00 1000 00090000 %x".to_string(),
         )?;
 
-        self.change_descriptor_state(&Descriptor::OperatingStatusBlock, &DescriptorAction::Close).await;
+        self.change_descriptor_state(&Descriptor::OperatingStatusBlock, &DescriptorAction::Close)
+            .await;
 
         let final_array = res[0].to_vec().unwrap();
 
@@ -509,7 +516,8 @@ impl NetMDInterface {
         self.change_descriptor_state(
             &Descriptor::OperatingStatusBlock,
             &DescriptorAction::OpenRead,
-        ).await;
+        )
+        .await;
         let mut query = format_query(
             "1809 8001 0330 8802 0030 8805 0030 8806 00 ff00 00000000".to_string(),
             vec![],
@@ -525,7 +533,8 @@ impl NetMDInterface {
         let operating_status = result[1].to_vec().unwrap();
         let status_mode = result[0].to_i64().unwrap() as u8;
 
-        self.change_descriptor_state(&Descriptor::OperatingStatusBlock, &DescriptorAction::Close).await;
+        self.change_descriptor_state(&Descriptor::OperatingStatusBlock, &DescriptorAction::Close)
+            .await;
 
         if operating_status.len() < 2 {
             return Err("Unparsable operating system".into());
@@ -547,7 +556,8 @@ impl NetMDInterface {
         self.change_descriptor_state(
             &Descriptor::OperatingStatusBlock,
             &DescriptorAction::OpenRead,
-        ).await;
+        )
+        .await;
         let mut query = format_query(
             "1809 8001 0330 %w 0030 8805 0030 %w 00 ff00 00000000".to_string(),
             vec![QueryValue::Number(p1 as i64), QueryValue::Number(p2 as i64)],
@@ -561,7 +571,8 @@ impl NetMDInterface {
             "1809 8001 0330 %?%? %?%? %?%? %?%? %?%? %? 1000 00%?0000 %x %?".to_string(),
         );
 
-        self.change_descriptor_state(&Descriptor::OperatingStatusBlock, &DescriptorAction::Close).await;
+        self.change_descriptor_state(&Descriptor::OperatingStatusBlock, &DescriptorAction::Close)
+            .await;
 
         Ok(res.unwrap()[0].to_vec().unwrap())
     }
@@ -578,7 +589,8 @@ impl NetMDInterface {
         self.change_descriptor_state(
             &Descriptor::OperatingStatusBlock,
             &DescriptorAction::OpenRead,
-        ).await;
+        )
+        .await;
 
         let mut query = format_query(
             "1809 8001 0430 8802 0030 8805 0030 0003 0030 0002 00 ff00 00000000".to_string(),
@@ -602,7 +614,8 @@ impl NetMDInterface {
             result[4].to_i64().unwrap() as u16,
         ];
 
-        self.change_descriptor_state(&Descriptor::OperatingStatusBlock, &DescriptorAction::Close).await;
+        self.change_descriptor_state(&Descriptor::OperatingStatusBlock, &DescriptorAction::Close)
+            .await;
 
         Ok(final_result)
     }
@@ -709,21 +722,24 @@ impl NetMDInterface {
     // TODO: Ensure this is returning the correct value, it
     // looks like it actually might be a 16 bit integer
     pub async fn disc_flags(&mut self) -> Result<u8, Box<dyn Error>> {
-        self.change_descriptor_state(&Descriptor::RootTD, &DescriptorAction::OpenRead).await;
+        self.change_descriptor_state(&Descriptor::RootTD, &DescriptorAction::OpenRead)
+            .await;
         let mut query = format_query("1806 01101000 ff00 0001000b".to_string(), vec![]).unwrap();
 
         let reply = self.send_query(&mut query, false, false).await?;
 
         let res = scan_query(reply, "1806 01101000 1000 0001000b %b".to_string()).unwrap();
 
-        self.change_descriptor_state(&Descriptor::RootTD, &DescriptorAction::Close).await;
+        self.change_descriptor_state(&Descriptor::RootTD, &DescriptorAction::Close)
+            .await;
 
         Ok(res[0].to_i64().unwrap() as u8)
     }
 
     /// The number of tracks on  the disc
     pub async fn track_count(&mut self) -> Result<u16, Box<dyn Error>> {
-        self.change_descriptor_state(&Descriptor::AudioContentsTD, &DescriptorAction::OpenRead).await;
+        self.change_descriptor_state(&Descriptor::AudioContentsTD, &DescriptorAction::OpenRead)
+            .await;
 
         let mut query =
             format_query("1806 02101001 3000 1000 ff00 00000000".to_string(), vec![]).unwrap();
@@ -736,14 +752,17 @@ impl NetMDInterface {
         )
         .unwrap();
 
-        self.change_descriptor_state(&Descriptor::AudioContentsTD, &DescriptorAction::Close).await;
+        self.change_descriptor_state(&Descriptor::AudioContentsTD, &DescriptorAction::Close)
+            .await;
 
         Ok(res[0].to_i64().unwrap() as u16)
     }
 
     async fn raw_disc_title(&mut self, wchar: bool) -> Result<String, Box<dyn Error>> {
-        self.change_descriptor_state(&Descriptor::AudioContentsTD, &DescriptorAction::OpenRead).await;
-        self.change_descriptor_state(&Descriptor::DiscTitleTD, &DescriptorAction::OpenRead).await;
+        self.change_descriptor_state(&Descriptor::AudioContentsTD, &DescriptorAction::OpenRead)
+            .await;
+        self.change_descriptor_state(&Descriptor::DiscTitleTD, &DescriptorAction::OpenRead)
+            .await;
 
         let mut done: i32 = 0;
         let mut remaining: i32 = 0;
@@ -797,8 +816,10 @@ impl NetMDInterface {
 
         let res = result.join("");
 
-        self.change_descriptor_state(&Descriptor::DiscTitleTD, &DescriptorAction::Close).await;
-        self.change_descriptor_state(&Descriptor::AudioContentsTD, &DescriptorAction::Close).await;
+        self.change_descriptor_state(&Descriptor::DiscTitleTD, &DescriptorAction::Close)
+            .await;
+        self.change_descriptor_state(&Descriptor::AudioContentsTD, &DescriptorAction::Close)
+            .await;
 
         Ok(res)
     }
@@ -931,7 +952,8 @@ impl NetMDInterface {
             false => Descriptor::AudioUTOC1TD,
         };
 
-        self.change_descriptor_state(&descriptor_type, &DescriptorAction::OpenRead).await;
+        self.change_descriptor_state(&descriptor_type, &DescriptorAction::OpenRead)
+            .await;
 
         let mut track_titles: Vec<String> = vec![];
         for i in tracks {
@@ -960,7 +982,8 @@ impl NetMDInterface {
             )
         }
 
-        self.change_descriptor_state(&descriptor_type, &DescriptorAction::Close).await;
+        self.change_descriptor_state(&descriptor_type, &DescriptorAction::Close)
+            .await;
 
         Ok(track_titles)
     }
@@ -976,11 +999,7 @@ impl NetMDInterface {
     }
 
     // Sets the title of the disc
-    pub async fn set_disc_title(
-        &mut self,
-        title: &str,
-        wchar: bool,
-    ) -> Result<(), Box<dyn Error>> {
+    pub async fn set_disc_title(&mut self, title: &str, wchar: bool) -> Result<(), Box<dyn Error>> {
         let current_title = self.raw_disc_title(wchar).await?;
         if current_title == title {
             return Err("Title is already the same".into());
@@ -1003,10 +1022,13 @@ impl NetMDInterface {
         let new_len = new_title.len();
 
         if self.net_md_device.vendor_id().await == &0x04dd {
-            self.change_descriptor_state(&Descriptor::AudioUTOC1TD, &DescriptorAction::OpenWrite).await
+            self.change_descriptor_state(&Descriptor::AudioUTOC1TD, &DescriptorAction::OpenWrite)
+                .await
         } else {
-            self.change_descriptor_state(&Descriptor::DiscTitleTD, &DescriptorAction::Close).await;
-            self.change_descriptor_state(&Descriptor::DiscTitleTD, &DescriptorAction::OpenWrite).await
+            self.change_descriptor_state(&Descriptor::DiscTitleTD, &DescriptorAction::Close)
+                .await;
+            self.change_descriptor_state(&Descriptor::DiscTitleTD, &DescriptorAction::OpenWrite)
+                .await
         }
 
         let mut query = format_query(
@@ -1022,11 +1044,15 @@ impl NetMDInterface {
         let _ = self.send_query(&mut query, false, false).await;
 
         if self.net_md_device.vendor_id().await == &0x04dd {
-            self.change_descriptor_state(&Descriptor::AudioUTOC1TD, &DescriptorAction::Close).await
+            self.change_descriptor_state(&Descriptor::AudioUTOC1TD, &DescriptorAction::Close)
+                .await
         } else {
-            self.change_descriptor_state(&Descriptor::DiscTitleTD, &DescriptorAction::Close).await;
-            self.change_descriptor_state(&Descriptor::DiscTitleTD, &DescriptorAction::OpenRead).await;
-            self.change_descriptor_state(&Descriptor::DiscTitleTD, &DescriptorAction::Close).await;
+            self.change_descriptor_state(&Descriptor::DiscTitleTD, &DescriptorAction::Close)
+                .await;
+            self.change_descriptor_state(&Descriptor::DiscTitleTD, &DescriptorAction::OpenRead)
+                .await;
+            self.change_descriptor_state(&Descriptor::DiscTitleTD, &DescriptorAction::Close)
+                .await;
         }
 
         Ok(())
@@ -1064,7 +1090,8 @@ impl NetMDInterface {
             Err(error) => return Err(error),
         };
 
-        self.change_descriptor_state(&descriptor, &DescriptorAction::OpenWrite).await;
+        self.change_descriptor_state(&descriptor, &DescriptorAction::OpenWrite)
+            .await;
         let mut query = format_query(
             "1807 022018%b %w 3000 0a00 5000 %w 0000 %w %*".to_string(),
             vec![
@@ -1081,7 +1108,8 @@ impl NetMDInterface {
             reply,
             "1807 022018%? %?%? 3000 0a00 5000 %?%? 0000 %?%?".to_string(),
         );
-        self.change_descriptor_state(&descriptor, &DescriptorAction::Close).await;
+        self.change_descriptor_state(&descriptor, &DescriptorAction::Close)
+            .await;
 
         Ok(())
     }
@@ -1119,7 +1147,8 @@ impl NetMDInterface {
         p1: i32,
         p2: i32,
     ) -> Result<Vec<u8>, Box<dyn Error>> {
-        self.change_descriptor_state(&Descriptor::AudioContentsTD, &DescriptorAction::OpenRead).await;
+        self.change_descriptor_state(&Descriptor::AudioContentsTD, &DescriptorAction::OpenRead)
+            .await;
 
         let mut query = format_query(
             "1806 02201001 %w %w %w ff00 00000000".to_string(),
@@ -1136,7 +1165,8 @@ impl NetMDInterface {
             "1806 02201001 %?%? %?%? %?%? 1000 00%?0000 %x".to_string(),
         )?;
 
-        self.change_descriptor_state(&Descriptor::AudioContentsTD, &DescriptorAction::Close).await;
+        self.change_descriptor_state(&Descriptor::AudioContentsTD, &DescriptorAction::Close)
+            .await;
 
         Ok(res[0].to_vec().unwrap())
     }
@@ -1148,7 +1178,8 @@ impl NetMDInterface {
     ) -> Result<Vec<std::time::Duration>, Box<dyn Error>> {
         let mut times: Vec<std::time::Duration> = vec![];
 
-        self.change_descriptor_state(&Descriptor::AudioContentsTD, &DescriptorAction::OpenRead).await;
+        self.change_descriptor_state(&Descriptor::AudioContentsTD, &DescriptorAction::OpenRead)
+            .await;
         for track in tracks {
             let mut query = format_query(
                 "1806 02201001 %w %w %w ff00 00000000".to_string(),
@@ -1180,7 +1211,8 @@ impl NetMDInterface {
             times.push(length);
         }
 
-        self.change_descriptor_state(&Descriptor::AudioContentsTD, &DescriptorAction::Close).await;
+        self.change_descriptor_state(&Descriptor::AudioContentsTD, &DescriptorAction::Close)
+            .await;
 
         Ok(times)
     }
@@ -1211,7 +1243,8 @@ impl NetMDInterface {
 
     /// Gets a track's flags
     pub async fn track_flags(&mut self, track: u16) -> Result<u8, Box<dyn Error>> {
-        self.change_descriptor_state(&Descriptor::AudioContentsTD, &DescriptorAction::OpenRead).await;
+        self.change_descriptor_state(&Descriptor::AudioContentsTD, &DescriptorAction::OpenRead)
+            .await;
         let mut query = format_query(
             "1806 01201001 %w ff00 00010008".to_string(),
             vec![QueryValue::Number(track as i64)],
@@ -1220,14 +1253,16 @@ impl NetMDInterface {
 
         let res = scan_query(reply, "1806 01201001 %?%? 10 00 00010008 %b".to_string())?;
 
-        self.change_descriptor_state(&Descriptor::AudioContentsTD, &DescriptorAction::Close).await;
+        self.change_descriptor_state(&Descriptor::AudioContentsTD, &DescriptorAction::Close)
+            .await;
 
         Ok(res[0].to_i64().unwrap() as u8)
     }
 
     /// Gets the disc capacity as a `std::time::Duration`
     pub async fn disc_capacity(&mut self) -> Result<[std::time::Duration; 3], Box<dyn Error>> {
-        self.change_descriptor_state(&Descriptor::RootTD, &DescriptorAction::OpenRead).await;
+        self.change_descriptor_state(&Descriptor::RootTD, &DescriptorAction::OpenRead)
+            .await;
         let mut query = format_query("1806 02101000 3080 0300 ff00 00000000".to_string(), vec![])?;
         let reply = self.send_query(&mut query, false, false).await?;
         let mut result: [std::time::Duration; 3] = [std::time::Duration::from_secs(0); 3];
@@ -1250,7 +1285,8 @@ impl NetMDInterface {
             result[i] = std::time::Duration::from_micros(time_micros);
         }
 
-        self.change_descriptor_state(&Descriptor::RootTD, &DescriptorAction::Close).await;
+        self.change_descriptor_state(&Descriptor::RootTD, &DescriptorAction::Close)
+            .await;
 
         Ok(result)
     }
@@ -1259,7 +1295,8 @@ impl NetMDInterface {
         self.change_descriptor_state(
             &Descriptor::OperatingStatusBlock,
             &DescriptorAction::OpenRead,
-        ).await;
+        )
+        .await;
         let mut query = format_query(
             "1809 8001 0330 8801 0030 8805 0030 8807 00 ff00 00000000".to_string(),
             vec![],
@@ -1269,7 +1306,8 @@ impl NetMDInterface {
 
         let res = scan_query(reply, "1809 8001 0330 8801 0030 8805 0030 8807 00 1000 000e0000 000c 8805 0008 80e0 0110 %b %b 4000".to_string())?;
 
-        self.change_descriptor_state(&Descriptor::OperatingStatusBlock, &DescriptorAction::Close).await;
+        self.change_descriptor_state(&Descriptor::OperatingStatusBlock, &DescriptorAction::Close)
+            .await;
 
         Ok(res.into_iter().map(|x| x.to_i64().unwrap() as u8).collect())
     }
@@ -1448,7 +1486,9 @@ impl NetMDInterface {
         }
 
         let mut message = [vec![1, 1, 1, 1], contentid.to_vec(), keyenckey.to_vec()].concat();
-        DesCbcEnc::new(hex_session_key.into(), &[0u8; 8].into()).encrypt_padded_mut::<NoPadding>(message.as_mut_slice(), 32).unwrap();
+        DesCbcEnc::new(hex_session_key.into(), &[0u8; 8].into())
+            .encrypt_padded_mut::<NoPadding>(message.as_mut_slice(), 32)
+            .unwrap();
 
         let mut query = format_query(
             "1800 080046 f0030103 22 ff 0000 %*".to_string(),
@@ -1472,7 +1512,9 @@ impl NetMDInterface {
         }
 
         let mut message = [0u8; 8];
-        DesEcbEnc::new(hex_session_key.into()).encrypt_padded_mut::<NoPadding>(&mut message, 8).unwrap();
+        DesEcbEnc::new(hex_session_key.into())
+            .encrypt_padded_mut::<NoPadding>(&mut message, 8)
+            .unwrap();
 
         let mut query = format_query(
             "1800 080046 f0030103 48 ff 00 1001 %w %*".to_string(),
@@ -1498,8 +1540,11 @@ impl NetMDInterface {
         // key   // iv    // data
         mut packets: UnboundedReceiver<(Vec<u8>, Vec<u8>, Vec<u8>)>,
         hex_session_key: &[u8],
-        progress_callback: F
-    ) -> Result<(u16, Vec<u8>, Vec<u8>), Box<dyn Error>> where F: Fn(usize, usize) {
+        progress_callback: F,
+    ) -> Result<(u16, Vec<u8>, Vec<u8>), Box<dyn Error>>
+    where
+        F: Fn(usize, usize),
+    {
         if hex_session_key.len() != 8 {
             return Err("Supplied Session Key length wrong".into());
         }
@@ -1530,7 +1575,7 @@ impl NetMDInterface {
 
         let mut _written_bytes = 0;
         let mut packet_count = 0;
-        
+
         while let Some((key, iv, data)) = packets.recv().await {
             let binpack = if packet_count == 0 {
                 let packed_length: Vec<u8> = pkt_size.to_be_bytes().to_vec();
@@ -1556,7 +1601,9 @@ impl NetMDInterface {
         )?;
 
         let mut encrypted_data = res[1].to_vec().unwrap();
-        DesCbcDec::new(hex_session_key.into(), &[0u8; 8].into()).decrypt_padded_mut::<NoPadding>(&mut encrypted_data).unwrap();
+        DesCbcDec::new(hex_session_key.into(), &[0u8; 8].into())
+            .decrypt_padded_mut::<NoPadding>(&mut encrypted_data)
+            .unwrap();
 
         let part1 = encrypted_data[0..8].to_vec();
         let part2 = encrypted_data[12..32].to_vec();
@@ -1591,21 +1638,25 @@ type TDesCbcEnc = cbc::Encryptor<des::TdesEde3>;
 pub fn retailmac(key: &[u8], value: &[u8], iv: &[u8; 8]) -> Vec<u8> {
     let mut subkey_a = [0u8; 8];
     subkey_a.clone_from_slice(&key[0..8]);
-    
+
     let mut beginning = [0u8; 8];
     beginning.clone_from_slice(&value[0..8]);
 
     let mut end = [0u8; 8];
     end.clone_from_slice(&value[8..]);
 
-    DesCbcEnc::new(&subkey_a.into(), iv.into()).encrypt_padded_mut::<NoPadding>(&mut beginning, 8).unwrap();
+    DesCbcEnc::new(&subkey_a.into(), iv.into())
+        .encrypt_padded_mut::<NoPadding>(&mut beginning, 8)
+        .unwrap();
 
     let iv2 = &beginning[beginning.len() - 8..];
-    
+
     let mut wonky_key = [0u8; 24];
     wonky_key[0..16].clone_from_slice(&key);
     wonky_key[16..].clone_from_slice(&key[0..8]);
-    TDesCbcEnc::new(&wonky_key.into(), iv2.into()).encrypt_padded_mut::<NoPadding>(&mut end, 8).unwrap();
+    TDesCbcEnc::new(&wonky_key.into(), iv2.into())
+        .encrypt_padded_mut::<NoPadding>(&mut end, 8)
+        .unwrap();
 
     end[..8].to_vec()
 }
@@ -1642,13 +1693,19 @@ impl EKBOpenSource {
     pub fn ekb_data_for_leaf_id(&self) -> EKBData {
         EKBData {
             chains: [
-                [0x25, 0x45, 0x06, 0x4d, 0xea, 0xca, 0x14, 0xf9, 0x96, 0xbd, 0xc8, 0xa4, 0x06, 0xc2, 0x2b, 0x81],
-                [0xfb, 0x60, 0xbd, 0xdd, 0x0d, 0xbc, 0xab, 0x84, 0x8a, 0x00, 0x5e, 0x03, 0x19, 0x4d, 0x3e, 0xda],
+                [
+                    0x25, 0x45, 0x06, 0x4d, 0xea, 0xca, 0x14, 0xf9, 0x96, 0xbd, 0xc8, 0xa4, 0x06,
+                    0xc2, 0x2b, 0x81,
+                ],
+                [
+                    0xfb, 0x60, 0xbd, 0xdd, 0x0d, 0xbc, 0xab, 0x84, 0x8a, 0x00, 0x5e, 0x03, 0x19,
+                    0x4d, 0x3e, 0xda,
+                ],
             ],
             depth: 9,
             signature: [
-                0x8f, 0x2b, 0xc3, 0x52, 0xe8, 0x6c, 0x5e, 0xd3, 0x06, 0xdc, 0xae, 0x18,
-                0xd2, 0xf3, 0x8c, 0x7f, 0x89, 0xb5, 0xe1, 0x85, 0x55, 0xa1, 0x05, 0xea,
+                0x8f, 0x2b, 0xc3, 0x52, 0xe8, 0x6c, 0x5e, 0xd3, 0x06, 0xdc, 0xae, 0x18, 0xd2, 0xf3,
+                0x8c, 0x7f, 0x89, 0xb5, 0xe1, 0x85, 0x55, 0xa1, 0x05, 0xea,
             ],
         }
     }
@@ -1660,7 +1717,8 @@ pub struct MDTrack {
     pub data: Vec<u8>,
     pub chunk_size: usize,
     pub full_width_title: Option<String>,
-    pub encrypt_packets_iterator: Box<dyn Fn(DataEncryptorInput) -> UnboundedReceiver<(Vec<u8>, Vec<u8>, Vec<u8>)>>,
+    pub encrypt_packets_iterator:
+        Box<dyn Fn(DataEncryptorInput) -> UnboundedReceiver<(Vec<u8>, Vec<u8>, Vec<u8>)>>,
 }
 
 pub struct DataEncryptorInput {
@@ -1715,12 +1773,12 @@ impl MDTrack {
         [0x14, 0xe3, 0x83, 0x4e, 0xe2, 0xd3, 0xcc, 0xa5]
     }
 
-    pub fn get_encrypting_iterator(&mut self) -> UnboundedReceiver<(Vec<u8>, Vec<u8>, Vec<u8>)>{
+    pub fn get_encrypting_iterator(&mut self) -> UnboundedReceiver<(Vec<u8>, Vec<u8>, Vec<u8>)> {
         (self.encrypt_packets_iterator)(DataEncryptorInput {
             kek: self.get_kek().clone(),
             frame_size: self.frame_size(),
             chunk_size: self.chunk_size(),
-            data: std::mem::take(&mut self.data)
+            data: std::mem::take(&mut self.data),
         })
     }
 }
@@ -1732,18 +1790,25 @@ pub struct MDSession<'a> {
 }
 
 impl<'a> MDSession<'a> {
-    pub async fn init(&mut self) -> Result<(), Box<dyn Error>>{
+    pub async fn init(&mut self) -> Result<(), Box<dyn Error>> {
         self.md.enter_secure_session().await?;
         self.md.leaf_id().await?;
 
         let ekb = self.ekb_object.ekb_data_for_leaf_id();
-        self.md.send_key_data(self.ekb_object.ekb_id(), ekb.chains, ekb.depth, ekb.signature).await?;
+        self.md
+            .send_key_data(
+                self.ekb_object.ekb_id(),
+                ekb.chains,
+                ekb.depth,
+                ekb.signature,
+            )
+            .await?;
         let mut nonce = vec![0u8; 8];
         rand::thread_rng().fill_bytes(&mut nonce);
 
         let mut devnonce = self.md.session_key_exchange(nonce.clone()).await?;
         nonce.append(&mut devnonce);
-        
+
         self.hex_session_key = Some(retailmac(&self.ekb_object.root_key(), &nonce, &[0u8; 8]));
         Ok(())
     }
@@ -1757,30 +1822,52 @@ impl<'a> MDSession<'a> {
         Ok(())
     }
 
-    pub async fn download_track<F>(&mut self, mut track: MDTrack, progress_callback: F, disc_format: Option<DiscFormat>) -> Result<(u16, Vec<u8>, Vec<u8>), Box<dyn Error>> where F: Fn(usize, usize) {
-        if let None = self.hex_session_key{
+    pub async fn download_track<F>(
+        &mut self,
+        mut track: MDTrack,
+        progress_callback: F,
+        disc_format: Option<DiscFormat>,
+    ) -> Result<(u16, Vec<u8>, Vec<u8>), Box<dyn Error>>
+    where
+        F: Fn(usize, usize),
+    {
+        if let None = self.hex_session_key {
             return Err("Cannot download a track using a non-init()'ed session!".into());
-
         }
-        self.md.setup_download(&track.content_id(), &track.get_kek(), &self.hex_session_key.as_ref().unwrap()).await?;
+        self.md
+            .setup_download(
+                &track.content_id(),
+                &track.get_kek(),
+                &self.hex_session_key.as_ref().unwrap(),
+            )
+            .await?;
         let data_format = track.data_format();
         let final_disc_format = disc_format.unwrap_or(*DISC_FOR_WIRE.get(&data_format).unwrap());
 
-        let (track_index, uuid, ccid) = self.md.send_track(
-            data_format as u8,
-            final_disc_format as u8,
-            track.frame_count() as u32,
-            track.total_size() as u32,
-            track.get_encrypting_iterator(),
-            self.hex_session_key.as_ref().unwrap().as_slice(),
-            progress_callback
-        ).await?;
+        let (track_index, uuid, ccid) = self
+            .md
+            .send_track(
+                data_format as u8,
+                final_disc_format as u8,
+                track.frame_count() as u32,
+                track.total_size() as u32,
+                track.get_encrypting_iterator(),
+                self.hex_session_key.as_ref().unwrap().as_slice(),
+                progress_callback,
+            )
+            .await?;
 
-        self.md.set_track_title(track_index, &track.title, false).await?;
+        self.md
+            .set_track_title(track_index, &track.title, false)
+            .await?;
         if let Some(full_width) = track.full_width_title {
-            self.md.set_track_title(track_index, &full_width, true).await?;
+            self.md
+                .set_track_title(track_index, &full_width, true)
+                .await?;
         }
-        self.md.commit_track(track_index, &self.hex_session_key.as_ref().unwrap()).await?;
+        self.md
+            .commit_track(track_index, &self.hex_session_key.as_ref().unwrap())
+            .await?;
 
         Ok((track_index, uuid, ccid))
     }

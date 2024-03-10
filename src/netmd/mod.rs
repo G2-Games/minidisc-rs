@@ -5,9 +5,9 @@
  */
 
 mod base;
+pub mod commands;
+pub mod encryption;
 pub mod interface;
 mod mappings;
 mod query_utils;
 mod utils;
-pub mod commands;
-pub mod encryption;

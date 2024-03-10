@@ -1,14 +1,13 @@
 #![cfg_attr(debug_assertions, allow(dead_code))]
-use std::error::Error;
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
+use std::error::Error;
 
-use super::interface::{NetMDInterface, MDTrack, MDSession};
+use super::interface::{MDSession, MDTrack, NetMDInterface};
 use super::utils::cross_sleep;
 
-#[derive(FromPrimitive)]
-#[derive(PartialEq)]
-pub enum OperatingStatus{
+#[derive(FromPrimitive, PartialEq)]
+pub enum OperatingStatus {
     Ready = 50687,
     Playing = 50037,
     Paused = 50045,
@@ -49,17 +48,27 @@ pub async fn device_status(interface: &mut NetMDInterface) -> Result<DeviceStatu
         state = Some(OperatingStatus::Ready);
     }
 
-    let time = Time{
+    let time = Time {
         minute: position[2],
         second: position[3],
         frame: position[4],
     };
 
-    Ok(DeviceStatus { disc_present, state, track, time })
+    Ok(DeviceStatus {
+        disc_present,
+        state,
+        track,
+        time,
+    })
 }
 
-pub async fn prepare_download(interface: &mut NetMDInterface) -> Result<(), Box<dyn Error>>{
-    while ![OperatingStatus::DiscBlank, OperatingStatus::Ready].contains(&device_status(interface).await?.state.unwrap_or(OperatingStatus::NoDisc)) {
+pub async fn prepare_download(interface: &mut NetMDInterface) -> Result<(), Box<dyn Error>> {
+    while ![OperatingStatus::DiscBlank, OperatingStatus::Ready].contains(
+        &device_status(interface)
+            .await?
+            .state
+            .unwrap_or(OperatingStatus::NoDisc),
+    ) {
         cross_sleep(200).await;
     }
 
@@ -72,11 +81,20 @@ pub async fn prepare_download(interface: &mut NetMDInterface) -> Result<(), Box<
     Ok(())
 }
 
-pub async fn download<F>(interface: &mut NetMDInterface, track: MDTrack, progress_callback: F) -> Result<(u16, Vec<u8>, Vec<u8>), Box<dyn Error>> where F: Fn(usize, usize){
+pub async fn download<F>(
+    interface: &mut NetMDInterface,
+    track: MDTrack,
+    progress_callback: F,
+) -> Result<(u16, Vec<u8>, Vec<u8>), Box<dyn Error>>
+where
+    F: Fn(usize, usize),
+{
     prepare_download(interface).await?;
     let mut session = MDSession::new(interface);
     session.init().await?;
-    let result = session.download_track(track, progress_callback, None).await?;
+    let result = session
+        .download_track(track, progress_callback, None)
+        .await?;
     session.close().await?;
     interface.release().await?;
 
