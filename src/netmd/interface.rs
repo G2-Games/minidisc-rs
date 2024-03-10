@@ -420,7 +420,7 @@ impl NetMDInterface {
 
     async fn playback_control(&mut self, action: Action) -> Result<(), Box<dyn Error>> {
         let mut query = format_query(
-            "18c3 00 %b 000000".to_string(),
+            "18c3 ff %b 000000".to_string(),
             vec![QueryValue::Number(action as i64)],
         )?;
 
