@@ -20,16 +20,16 @@ pub enum OperatingStatus {
 }
 
 pub struct Time {
-    minute: u16,
-    second: u16,
-    frame: u16,
+    pub minute: u16,
+    pub second: u16,
+    pub frame: u16,
 }
 
 pub struct DeviceStatus {
-    disc_present: bool,
-    state: Option<OperatingStatus>,
-    track: u8,
-    time: Time,
+    pub disc_present: bool,
+    pub state: Option<OperatingStatus>,
+    pub track: u8,
+    pub time: Time,
 }
 
 pub async fn device_status(interface: &mut NetMDInterface) -> Result<DeviceStatus, Box<dyn Error>> {
