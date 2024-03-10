@@ -99,7 +99,6 @@ pub struct DeviceId {
 pub struct NetMD {
     usb_interface: UsbInterface,
     model: DeviceId,
-    status: Option<Status>,
 }
 
 impl NetMD {
@@ -132,7 +131,6 @@ impl NetMD {
         Ok(Self {
             usb_interface,
             model,
-            status: None,
         })
     }
 
