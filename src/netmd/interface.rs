@@ -1033,7 +1033,7 @@ impl NetMDInterface {
 
         let new_len = new_title.len();
 
-        if self.net_md_device.vendor_id().await == &0x04dd {
+        if self.net_md_device.vendor_id() == &0x04dd {
             self.change_descriptor_state(&Descriptor::AudioUTOC1TD, &DescriptorAction::OpenWrite)
                 .await
         } else {
@@ -1055,7 +1055,7 @@ impl NetMDInterface {
 
         let _ = self.send_query(&mut query, false, false).await;
 
-        if self.net_md_device.vendor_id().await == &0x04dd {
+        if self.net_md_device.vendor_id() == &0x04dd {
             self.change_descriptor_state(&Descriptor::AudioUTOC1TD, &DescriptorAction::Close)
                 .await
         } else {

@@ -135,17 +135,17 @@ impl NetMD {
     }
 
     /// Gets the device name, this is limited to the devices in the list
-    pub async fn device_name(&self) -> &Option<String> {
+    pub fn device_name(&self) -> &Option<String> {
         &self.model.name
     }
 
     /// Gets the vendor id
-    pub async fn vendor_id(&self) -> &u16 {
+    pub fn vendor_id(&self) -> &u16 {
         &self.model.vendor_id
     }
 
     /// Gets the product id
-    pub async fn product_id(&self) -> &u16 {
+    pub fn product_id(&self) -> &u16 {
         &self.model.product_id
     }
 
