@@ -1,18 +1,45 @@
 [package]
-name = "minidisc-cli"
-homepage = "https://github.com/G2-Games/minidisc-rs"
-repository = "https://github.com/G2-Games/minidisc-rs"
-readme = "README.md"
+name = "minidisc_rs"
 version = "0.0.1"
-edition = "2021"
+homepage = "https://github.com/G2-Games/minidisc-cli/"
+repository = "https://github.com/G2-Games/minidisc-cli/minidisc-rs/"
+description = "An interface in rust to control NetMD and Hi-MD minidisc devices."
+license-file = "LICENSE"
 authors = ["G2 <g2@g2games.dev>"]
-license = "AGPL-3.0"
+edition = "2021"
+readme = "README.md"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+diacritics = "0.2.0"
+encoding_rs = "0.8.33"
+nofmt = "1.0.0"
+once_cell = "1.18.0"
+unicode-normalization = "0.1.22"
 hex = "0.4.3"
+regex = "1.10.2"
+lazy_static = "1.4.0"
 cross_usb = "0.2"
-tokio = { version = "1.35.1", features = ["macros", "rt", "rt-multi-thread"] }
+num-derive = "0.3.3"
+num-traits = "0.2.14"
+rand = "0.8.5"
+getrandom = { version = "0.2.12", features = ["js"] }
+des = "0.8.1"
+cbc = "0.1.2"
+ecb = "0.1.2"
+tokio = { version = "1.35.1", features = ["sync"] }
 
-[dependencies.minidisc_rs]
-path = "minidisc-rs"
-version = "0.0.1"
+[dependencies.unicode-jp]
+# Relying on this fork for now as it has up-to-date deps
+git = "https://github.com/uzabase/unicode-jp-rs.git"
+
+[target.'cfg(target_family = "wasm")'.dependencies]
+web-sys = { version = "0.3", features = ["console"] }
+gloo = { version = "0.11.0", features = ["futures"] }
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[package.metadata.wasm-pack.profile.dev.wasm-bindgen]
+dwarf-debug-info = true
