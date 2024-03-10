@@ -5,12 +5,10 @@ use std::error::Error;
 use std::time::Duration;
 
 // USB stuff
-//use nusb::transfer::{Control, ControlIn, ControlOut, ControlType, Recipient, RequestBuffer};
 use cross_usb::usb::{ControlIn, ControlOut, ControlType, Device, Interface, Recipient};
 use cross_usb::{UsbDevice, UsbInterface};
 
 use super::utils::cross_sleep;
-//use nusb::{Device, DeviceInfo, Interface};
 
 const DEFAULT_TIMEOUT: Duration = Duration::new(10000, 0);
 const BULK_WRITE_ENDPOINT: u8 = 0x02;
