@@ -4,7 +4,7 @@
  * Documentation coming soon
  */
 
-mod base;
+pub mod base;
 pub mod commands;
 pub mod encryption;
 pub mod interface;
