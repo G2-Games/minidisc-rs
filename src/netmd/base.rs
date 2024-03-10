@@ -140,13 +140,13 @@ impl NetMD {
     }
 
     /// Gets the vendor id
-    pub fn vendor_id(&self) -> &u16 {
-        &self.model.vendor_id
+    pub fn vendor_id(&self) -> u16 {
+        self.model.vendor_id
     }
 
     /// Gets the product id
-    pub fn product_id(&self) -> &u16 {
-        &self.model.product_id
+    pub fn product_id(&self) -> u16 {
+        self.model.product_id
     }
 
     /// Poll the device to get either the result
