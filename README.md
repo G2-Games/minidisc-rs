@@ -10,10 +10,12 @@ Documentation has not been finished and is a work in progress.
 - [x] Track upload
 - [x] Track management
 - [x] Playback control
+- [ ] Group Management
 - [x] Track download ([MZ-RH1](https://www.minidisc.wiki/equipment/sony/portable/mz-rh1) only) 
 
 ### Hi-MD
 - [ ] Track upload
 - [ ] Track management
 - [ ] Playback control
+- [ ] Group Management
 - [ ] Track download
