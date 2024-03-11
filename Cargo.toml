@@ -1,13 +1,17 @@
 [package]
 name = "minidisc"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
-homepage = "https://github.com/G2-Games/minidisc-cli/"
+homepage = "https://github.com/G2-Games/minidisc-rs/"
 repository = "https://github.com/G2-Games/minidisc-cli/minidisc-rs/"
+documentation = "https://docs.rs/cross_usb"
 description = "A library for interacting with NetMD and Hi-MD minidisc devices."
-license-file = "LICENSE"
+license = "AGPL-3.0"
 authors = ["G2 <ke0bhogsg@gmail.com>", "Asivery"]
 readme = "README.md"
+
+keywords = ["minidisc"]
+categories = ["hardware-support", "wasm", "multimedia::audio"]
 
 # Have docs.rs make documentation for most supported targets
 [package.metadata.docs.rs]
