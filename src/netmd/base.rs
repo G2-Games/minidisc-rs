@@ -1,16 +1,16 @@
 #![cfg_attr(debug_assertions, allow(dead_code))]
-use nofmt;
-use once_cell::sync::Lazy;
-use std::error::Error;
 use std::time::Duration;
 
+use nofmt;
+use once_cell::sync::Lazy;
+use thiserror::Error;
+
 // USB stuff
-use cross_usb::usb::{ControlIn, ControlOut, ControlType, Device, Interface, Recipient};
+use cross_usb::usb::{ControlIn, ControlOut, ControlType, Device, Interface, Recipient, UsbError};
 use cross_usb::{UsbDevice, UsbInterface};
 
 use super::utils::cross_sleep;
 
-const DEFAULT_TIMEOUT: Duration = Duration::new(10000, 0);
 const BULK_WRITE_ENDPOINT: u8 = 0x02;
 const BULK_READ_ENDPOINT: u8 = 0x81;
 
@@ -89,13 +89,32 @@ pub enum Status {
 }
 
 /// The ID of a device, including the name
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct DeviceId {
     vendor_id: u16,
     product_id: u16,
     name: Option<String>,
 }
 
-/// A connection to a NetMD device
+#[derive(Error, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum NetMDError {
+    #[error("communication timed out")]
+    Timeout,
+
+    #[error("invalid usb result")]
+    InvalidResult,
+
+    #[error("the device is not ready")]
+    NotReady,
+
+    #[error("could not find device")]
+    UnknownDevice(DeviceId),
+
+    #[error("usb connection error")]
+    UsbError(#[from] UsbError),
+}
+
+/// A USB connection to a NetMD device
 pub struct NetMD {
     usb_interface: UsbInterface,
     model: DeviceId,
@@ -105,7 +124,7 @@ impl NetMD {
     const READ_REPLY_RETRY_INTERVAL: u32 = 10;
 
     /// Creates a new interface to a NetMD device
-    pub async fn new(usb_device: &UsbDevice) -> Result<Self, Box<dyn Error>> {
+    pub async fn new(usb_device: &UsbDevice) -> Result<Self, NetMDError> {
         let mut model = DeviceId {
             vendor_id: usb_device.vendor_id().await,
             product_id: usb_device.product_id().await,
@@ -122,7 +141,7 @@ impl NetMD {
         }
 
         match model.name {
-            None => return Err("Could not find device in list".into()),
+            None => return Err(NetMDError::UnknownDevice(model)),
             Some(_) => (),
         }
 
@@ -151,7 +170,7 @@ impl NetMD {
 
     /// Poll the device to get either the result
     /// of the previous command, or the status
-    pub async fn poll(&mut self) -> Result<(u16, [u8; 4]), Box<dyn Error>> {
+    pub async fn poll(&mut self) -> Result<(u16, [u8; 4]), NetMDError> {
         // Create an array to store the result of the poll
         let poll_result = match self
             .usb_interface
@@ -173,17 +192,17 @@ impl NetMD {
 
         let poll_result: [u8; 4] = match poll_result.try_into() {
             Ok(val) => val,
-            Err(_) => return Err("could not convert result".into()),
+            Err(_) => return Err(NetMDError::InvalidResult),
         };
 
         Ok((length_bytes, poll_result))
     }
 
-    pub async fn send_command(&mut self, command: Vec<u8>) -> Result<(), Box<dyn Error>> {
+    pub async fn send_command(&mut self, command: Vec<u8>) -> Result<(), NetMDError> {
         self._send_command(command, false).await
     }
 
-    pub async fn send_factory_command(&mut self, command: Vec<u8>) -> Result<(), Box<dyn Error>> {
+    pub async fn send_factory_command(&mut self, command: Vec<u8>) -> Result<(), NetMDError> {
         self._send_command(command, true).await
     }
 
@@ -192,12 +211,12 @@ impl NetMD {
         &mut self,
         command: Vec<u8>,
         use_factory_command: bool,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), NetMDError> {
         // First poll to ensure the device is ready
         match self.poll().await {
             Ok(buffer) => match buffer.1[2] {
                 0 => 0,
-                _ => return Err("Device not ready!".into()),
+                _ => return Err(NetMDError::NotReady),
             },
             Err(error) => return Err(error),
         };
@@ -227,14 +246,14 @@ impl NetMD {
     pub async fn read_reply(
         &mut self,
         override_length: Option<i32>,
-    ) -> Result<Vec<u8>, Box<dyn Error>> {
+    ) -> Result<Vec<u8>, NetMDError> {
         self._read_reply(false, override_length).await
     }
 
     pub async fn read_factory_reply(
         &mut self,
         override_length: Option<i32>,
-    ) -> Result<Vec<u8>, Box<dyn Error>> {
+    ) -> Result<Vec<u8>, NetMDError> {
         self._read_reply(true, override_length).await
     }
 
@@ -243,12 +262,12 @@ impl NetMD {
         &mut self,
         use_factory_command: bool,
         override_length: Option<i32>,
-    ) -> Result<Vec<u8>, Box<dyn Error>> {
+    ) -> Result<Vec<u8>, NetMDError> {
         let mut length = 0;
 
         for attempt in 0..40 {
             if attempt == 39 {
-                return Err("Failed to get response length".into());
+                return Err(NetMDError::Timeout);
             }
 
             length = self.poll().await?.0;
@@ -260,7 +279,7 @@ impl NetMD {
             // Back off while trying again
             let sleep_time = Self::READ_REPLY_RETRY_INTERVAL * (u32::pow(2, attempt) - 1);
 
-            cross_sleep(sleep_time).await;
+            cross_sleep(Duration::from_millis(sleep_time as u64)).await;
         }
 
         if let Some(value) = override_length {
@@ -293,7 +312,7 @@ impl NetMD {
         &mut self,
         length: usize,
         chunksize: usize,
-    ) -> Result<Vec<u8>, Box<dyn Error>> {
+    ) -> Result<Vec<u8>, NetMDError> {
         let result = self.read_bulk_to_array(length, chunksize).await?;
 
         Ok(result)
@@ -303,7 +322,7 @@ impl NetMD {
         &mut self,
         length: usize,
         chunksize: usize,
-    ) -> Result<Vec<u8>, Box<dyn Error>> {
+    ) -> Result<Vec<u8>, NetMDError> {
         let mut final_result: Vec<u8> = Vec::new();
         let mut done = 0;
 
@@ -317,7 +336,7 @@ impl NetMD {
                 .await
             {
                 Ok(result) => result,
-                Err(error) => return Err(format!("USB error: {:?}", error).into()),
+                Err(error) => return Err(NetMDError::UsbError(error)),
             };
 
             final_result.extend_from_slice(&res);
@@ -326,7 +345,7 @@ impl NetMD {
         Ok(final_result)
     }
 
-    pub async fn write_bulk(&mut self, data: &[u8]) -> Result<usize, Box<dyn Error>> {
+    pub async fn write_bulk(&mut self, data: &[u8]) -> Result<usize, NetMDError> {
         Ok(self
             .usb_interface
             .bulk_out(BULK_WRITE_ENDPOINT, data)

@@ -2,19 +2,19 @@ use crate::netmd::mappings::{ALLOWED_HW_KANA, MAPPINGS_DE, MAPPINGS_HW, MAPPINGS
 use diacritics;
 use encoding_rs::SHIFT_JIS;
 use regex::Regex;
-use std::{collections::hash_map::HashMap, error::Error, vec::IntoIter};
+use std::{collections::hash_map::HashMap, error::Error, vec::IntoIter, time::Duration};
 use unicode_normalization::UnicodeNormalization;
 
 extern crate kana;
 use kana::*;
 
 /// Sleep for a specified number of milliseconds on any platform
-pub async fn cross_sleep(millis: u32) {
+pub async fn cross_sleep(duration: Duration) {
     #[cfg(not(target_family = "wasm"))]
-    std::thread::sleep(std::time::Duration::from_millis(millis as u64));
+    std::thread::sleep(duration);
 
     #[cfg(target_family = "wasm")]
-    gloo::timers::future::TimeoutFuture::new(millis).await;
+    gloo::timers::future::TimeoutFuture::new(duration.as_millis()).await;
 }
 
 pub fn bcd_to_int(mut bcd: i32) -> i32 {

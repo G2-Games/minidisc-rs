@@ -1,7 +1,7 @@
 use crate::netmd::utils;
 use lazy_static::lazy_static;
 use std::collections::hash_map::HashMap;
-use std::error::Error;
+use thiserror::Error;
 
 lazy_static! {
     /// %b, w, d, q - explained above (can have endiannes overriden by '>' and '<' operators, f. ex. %>d %<q)
@@ -27,24 +27,73 @@ pub enum QueryValue {
     Array(Vec<u8>),
 }
 
+#[derive(Error, Debug, Eq, PartialEq, PartialOrd, Ord)]
+pub enum ValueError {
+    #[error("type mismatch: expected {expected}, got {actual}")]
+    TypeMismatch {
+        expected: String,
+        actual: String
+    }
+}
+
 impl QueryValue {
-    pub fn to_vec(&self) -> Result<Vec<u8>, Box<dyn Error>> {
+    pub fn from_array<const S: usize>(value: [u8; S]) -> Self {
+        Self::Array(value.to_vec())
+    }
+
+    pub fn to_array<const S: usize>(&self) -> Result<[u8; S], ValueError> {
+        let mut array = [0u8; S];
         match self {
-            QueryValue::Array(a) => Ok(a.to_vec()),
-            _ => Err("QueryValue type mismatch! Expected Vec<u8>, got i64".into()),
+            QueryValue::Array(a) => {
+                for (i, byte) in a.iter().take(S).enumerate() {
+                    array[i] = *byte
+                }
+                Ok(array)
+            },
+            _ => Err(ValueError::TypeMismatch {
+                expected: String::from("Vec<u8>"),
+                actual: format!("{:?}", self)
+            }),
         }
     }
 
-    pub fn to_i64(&self) -> Result<i64, Box<dyn Error>> {
+    pub fn to_vec(&self) -> Result<Vec<u8>, ValueError> {
+        match self {
+            QueryValue::Array(a) => Ok(a.to_vec()),
+            _ => Err(ValueError::TypeMismatch {
+                expected: String::from("Vec<u8>"),
+                actual: format!("{:?}", self)
+            }),
+        }
+    }
+
+    pub fn to_i64(&self) -> Result<i64, ValueError> {
         match self {
             QueryValue::Number(a) => Ok(*a),
-            _ => Err("QueryValue type mismatch! Expected i64, got Vec<u8>".into()),
+            _ => Err(ValueError::TypeMismatch {
+                expected: String::from("i64"),
+                actual: format!("{:?}", self)
+            }),
         }
     }
 }
 
+#[derive(Error, Debug, Eq, PartialEq, PartialOrd, Ord)]
+pub enum QueryError {
+    #[error("unrecognized format character: `{0}`")]
+    UnrecognizedChar(char),
+
+    #[error("Format and input mismatch at {index}: expected {expected:#04x}, got {actual:#04x} (format {format_string})")]
+    InputMismatch {
+        index: usize,
+        expected: u8,
+        actual: u8,
+        format_string: String,
+    }
+}
+
 /// Formats a query using a standard input to send to the player
-pub fn format_query(format: String, args: Vec<QueryValue>) -> Result<Vec<u8>, Box<dyn Error>> {
+pub fn format_query(format: String, args: Vec<QueryValue>) -> Result<Vec<u8>, QueryError> {
     if DEBUG {
         println!("SENT>>> F: {}", format);
     }
@@ -114,7 +163,7 @@ pub fn format_query(format: String, args: Vec<QueryValue>) -> Result<Vec<u8>, Bo
                     }
                     result.push((converted & 0xFF) as u8);
                 }
-                _ => return Err(format!("Unrecognized format char {}", character).into()),
+                _ => return Err(QueryError::UnrecognizedChar(character)),
             }
             continue;
         }
@@ -142,7 +191,7 @@ pub fn format_query(format: String, args: Vec<QueryValue>) -> Result<Vec<u8>, Bo
 pub fn scan_query(
     query_result: Vec<u8>,
     format: String,
-) -> Result<Vec<QueryValue>, Box<dyn Error>> {
+) -> Result<Vec<QueryValue>, QueryError> {
     let mut result: Vec<QueryValue> = Vec::new();
 
     let initial_length = query_result.len();
@@ -224,7 +273,7 @@ pub fn scan_query(
                         | input_stack.next().unwrap() as i32;
                     result.push(QueryValue::Number(utils::bcd_to_int(v) as i64));
                 }
-                _ => return Err(format!("Unrecognized format char {}", character).into()),
+                _ => return Err(QueryError::UnrecognizedChar(character)),
             }
             continue;
         }
@@ -244,7 +293,12 @@ pub fn scan_query(
                 u8::from_str_radix(&String::from_iter([half.unwrap(), character]), 16).unwrap();
             if format_value != input_value {
                 let i = initial_length - input_stack.len() - 1;
-                return Err(format!("Format and input mismatch at {i}: expected {format_value:#04x}, got {input_value:#04x} (format {format})").into());
+                return Err(QueryError::InputMismatch {
+                    index: i,
+                    expected: format_value,
+                    actual: input_value,
+                    format_string: format
+                });
             }
             half = None;
         }

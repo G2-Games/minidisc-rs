@@ -1,7 +1,5 @@
-/*!
- * This crate is an interface in rust to control NetMD and Hi-MD minidisc devices.
- *
- * Documentation coming soon
- */
+/// A crate for controlling NetMD and Hi-MD devices.
+///
+/// To use this library, first you need to get a device from [cross-usb] and then open a [netmd::interface::NetMDInterface]
 
 pub mod netmd;

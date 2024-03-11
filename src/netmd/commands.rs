@@ -2,6 +2,7 @@
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
 use std::error::Error;
+use std::time::Duration;
 
 use super::interface::{MDSession, MDTrack, NetMDInterface};
 use super::utils::cross_sleep;
@@ -69,7 +70,7 @@ pub async fn prepare_download(interface: &mut NetMDInterface) -> Result<(), Box<
             .state
             .unwrap_or(OperatingStatus::NoDisc),
     ) {
-        cross_sleep(200).await;
+        cross_sleep(Duration::from_millis(200)).await;
     }
 
     let _ = interface.session_key_forget().await;

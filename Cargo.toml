@@ -34,6 +34,7 @@ cbc = "0.1"
 ecb = "0.1"
 tokio = { version = "1.36", features = ["sync"] }
 unicode-jp = { git = "https://github.com/uzabase/unicode-jp-rs.git" }
+thiserror = "1.0.57"
 
 [target.'cfg(target_family = "wasm")'.dependencies]
 gloo = { version = "0.11.0", features = ["futures"] }
