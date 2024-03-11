@@ -1,12 +1,12 @@
 [package]
-name = "minidisc_rs"
+name = "minidisc"
 version = "0.1.0"
 edition = "2021"
 homepage = "https://github.com/G2-Games/minidisc-cli/"
 repository = "https://github.com/G2-Games/minidisc-cli/minidisc-rs/"
-description = "A library for controlling and uploading data to NetMD and Hi-MD minidisc devices."
+description = "A library for interacting with NetMD and Hi-MD minidisc devices."
 license-file = "LICENSE"
-authors = ["G2 <ke0bhogsg@gmail.com>"]
+authors = ["G2 <ke0bhogsg@gmail.com>", "Asivery"]
 readme = "README.md"
 
 # Have docs.rs make documentation for most supported targets
@@ -33,7 +33,7 @@ des = "0.8"
 cbc = "0.1"
 ecb = "0.1"
 tokio = { version = "1.36", features = ["sync"] }
-unicode-jp = { git = "https://github.com/uzabase/unicode-jp-rs.git" }
+g2-unicode-jp = "0.4.1"
 thiserror = "1.0.57"
 
 [target.'cfg(target_family = "wasm")'.dependencies]

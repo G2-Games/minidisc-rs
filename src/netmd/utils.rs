@@ -14,7 +14,7 @@ pub async fn cross_sleep(duration: Duration) {
     std::thread::sleep(duration);
 
     #[cfg(target_family = "wasm")]
-    gloo::timers::future::TimeoutFuture::new(duration.as_millis()).await;
+    gloo::timers::future::TimeoutFuture::new(duration.as_millis() as u32).await;
 }
 
 pub fn bcd_to_int(mut bcd: i32) -> i32 {
