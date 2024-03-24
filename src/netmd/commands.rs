@@ -3,11 +3,12 @@ use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
 use std::error::Error;
 use std::time::Duration;
+use cross_usb::Descriptor;
 
-use super::interface::{MDSession, MDTrack, NetMDInterface};
+use super::interface::{MDSession, MDTrack, NetMDInterface, Direction, InterfaceError};
 use super::utils::cross_sleep;
 
-#[derive(FromPrimitive, PartialEq)]
+#[derive(FromPrimitive, PartialEq, Eq)]
 pub enum OperatingStatus {
     Ready = 50687,
     Playing = 50037,
@@ -33,71 +34,102 @@ pub struct DeviceStatus {
     pub time: Time,
 }
 
-pub async fn device_status(interface: &mut NetMDInterface) -> Result<DeviceStatus, Box<dyn Error>> {
-    let status = interface.status().await?;
-    let playback_status = interface.playback_status2().await?;
-    let b1: u16 = playback_status[4] as u16;
-    let b2: u16 = playback_status[5] as u16;
-    let position = interface.position().await?;
-    let operating_status = b1 << 8 | b2;
-
-    let track = position[0] as u8;
-    let disc_present = status[4] != 0x80;
-    let mut state: Option<OperatingStatus> = FromPrimitive::from_u16(operating_status);
-
-    if state == Some(OperatingStatus::Playing) && !disc_present {
-        state = Some(OperatingStatus::Ready);
-    }
-
-    let time = Time {
-        minute: position[2],
-        second: position[3],
-        frame: position[4],
-    };
-
-    Ok(DeviceStatus {
-        disc_present,
-        state,
-        track,
-        time,
-    })
+pub struct NetMDContext {
+    interface: NetMDInterface,
 }
 
-pub async fn prepare_download(interface: &mut NetMDInterface) -> Result<(), Box<dyn Error>> {
-    while ![OperatingStatus::DiscBlank, OperatingStatus::Ready].contains(
-        &device_status(interface)
-            .await?
-            .state
-            .unwrap_or(OperatingStatus::NoDisc),
-    ) {
-        cross_sleep(Duration::from_millis(200)).await;
+impl NetMDContext {
+    /// Create a new context to control a NetMD device
+    pub async fn new(device: Descriptor) -> Result<Self, InterfaceError> {
+        let interface = NetMDInterface::new(device).await?;
+
+        Ok(Self {
+            interface,
+        })
     }
 
-    let _ = interface.session_key_forget().await;
-    let _ = interface.leave_secure_session().await;
+    /// Change to the next track (skip forward)
+    pub async fn next_track(&mut self) -> Result<(), InterfaceError> {
+        self.interface.track_change(Direction::Next).await
+    }
 
-    interface.acquire().await?;
-    let _ = interface.disable_new_track_protection(1).await;
+    /// Change to the next track (skip back)
+    pub async fn previous_track(&mut self) -> Result<(), InterfaceError> {
+        self.interface.track_change(Direction::Previous).await
+    }
 
-    Ok(())
-}
+    /// Change to the next track (skip to beginning of track)
+    pub async fn restart_track(&mut self) -> Result<(), InterfaceError> {
+        self.interface.track_change(Direction::Restart).await
+    }
 
-pub async fn download<F>(
-    interface: &mut NetMDInterface,
-    track: MDTrack,
-    progress_callback: F,
-) -> Result<(u16, Vec<u8>, Vec<u8>), Box<dyn Error>>
-where
-    F: Fn(usize, usize),
-{
-    prepare_download(interface).await?;
-    let mut session = MDSession::new(interface);
-    session.init().await?;
-    let result = session
-        .download_track(track, progress_callback, None)
-        .await?;
-    session.close().await?;
-    interface.release().await?;
+    pub async fn device_status(&mut self) -> Result<DeviceStatus, Box<dyn Error>> {
+        let status = self.interface.status().await?;
+        let playback_status = self.interface.playback_status2().await?;
+        let b1: u16 = playback_status[4] as u16;
+        let b2: u16 = playback_status[5] as u16;
+        let position = self.interface.position().await?;
+        let operating_status = b1 << 8 | b2;
 
-    Ok(result)
+        let track = position[0] as u8;
+        let disc_present = status[4] != 0x80;
+        let mut state: Option<OperatingStatus> = FromPrimitive::from_u16(operating_status);
+
+        if state == Some(OperatingStatus::Playing) && !disc_present {
+            state = Some(OperatingStatus::Ready);
+        }
+
+        let time = Time {
+            minute: position[2],
+            second: position[3],
+            frame: position[4],
+        };
+
+        Ok(DeviceStatus {
+            disc_present,
+            state,
+            track,
+            time,
+        })
+    }
+
+    pub async fn prepare_download(&mut self) -> Result<(), Box<dyn Error>> {
+        while ![OperatingStatus::DiscBlank, OperatingStatus::Ready].contains(
+            &self.device_status()
+                .await?
+                .state
+                .unwrap_or(OperatingStatus::NoDisc),
+        ) {
+            cross_sleep(Duration::from_millis(200)).await;
+        }
+
+        let _ = self.interface.session_key_forget().await;
+        let _ = self.interface.leave_secure_session().await;
+
+        self.interface.acquire().await?;
+        let _ = self.interface.disable_new_track_protection(1).await;
+
+        Ok(())
+    }
+
+    pub async fn download<F>(
+        &mut self,
+        track: MDTrack,
+        progress_callback: F,
+    ) -> Result<(u16, Vec<u8>, Vec<u8>), Box<dyn Error>>
+    where
+        F: Fn(usize, usize),
+    {
+        self.prepare_download().await?;
+        // Lock the interface by providing it to the session
+        let mut session = MDSession::new(&mut self.interface);
+        session.init().await?;
+        let result = session
+            .download_track(track, progress_callback, None)
+            .await?;
+        session.close().await?;
+        self.interface.release().await?;
+
+        Ok(result)
+    }
 }

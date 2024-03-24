@@ -29,7 +29,7 @@ enum Action {
     Rewind = 0x49,
 }
 
-enum Track {
+pub enum Direction {
     Previous = 0x0002,
     Next = 0x8001,
     Restart = 0x0001,
@@ -260,7 +260,7 @@ pub enum InterfaceError {
 
 /// An interface for interacting with a NetMD device
 pub struct NetMDInterface {
-    pub net_md_device: NetMD,
+    pub device: NetMD,
 }
 
 #[allow(dead_code)]
@@ -269,9 +269,9 @@ impl NetMDInterface {
     const INTERIM_RESPONSE_RETRY_INTERVAL: u32 = 100;
 
     /// Get a new interface to a NetMD device
-    pub async fn new(device: &cross_usb::UsbDevice) -> Result<Self, InterfaceError> {
-        let net_md_device = base::NetMD::new(device).await?;
-        Ok(NetMDInterface { net_md_device })
+    pub async fn new(device: cross_usb::Descriptor) -> Result<Self, InterfaceError> {
+        let device = base::NetMD::new(device).await?;
+        Ok(NetMDInterface { device })
     }
 
     fn construct_multibyte(&mut self, buffer: &[u8], n: u8, offset: &mut usize) -> u32 {
@@ -432,7 +432,7 @@ impl NetMDInterface {
         new_query.push(status_byte as u8);
         new_query.append(query);
 
-        self.net_md_device.send_command(new_query).await?;
+        self.device.send_command(new_query).await?;
 
         Ok(())
     }
@@ -442,15 +442,15 @@ impl NetMDInterface {
         let mut data;
 
         while current_attempt < Self::MAX_INTERIM_READ_ATTEMPTS {
-            data = self.net_md_device.read_reply(None).await?;
+            data = self.device.read_reply(None).await?;
 
             let status = NetmdStatus::try_from(data[0])?;
 
             match status {
                 NetmdStatus::NotImplemented => {
-                    return Err(InterfaceError::NotImplemented(format!("{:X?}", data)))
+                    return Err(InterfaceError::NotImplemented(format!("{:02X?}", data)))
                 }
-                NetmdStatus::Rejected => return Err(InterfaceError::Rejected(format!("{:X?}", data))),
+                NetmdStatus::Rejected => return Err(InterfaceError::Rejected(format!("{:02X?}", data))),
                 NetmdStatus::Interim if !accept_interim => {
                     let sleep_time = Self::INTERIM_RESPONSE_RETRY_INTERVAL
                         * (u32::pow(2, current_attempt as u32) - 1);
@@ -466,7 +466,7 @@ impl NetMDInterface {
                     }
                     return Ok(data);
                 }
-                _ => return Err(InterfaceError::Unknown(format!("{:X?}", data))),
+                _ => return Err(InterfaceError::Unknown(format!("{:02X?}", data))),
             }
         }
 
@@ -693,6 +693,7 @@ impl NetMDInterface {
         let mut query = format_query("18c1 ff 6000".to_string(), vec![]).unwrap();
 
         let _reply = self.send_query(&mut query, false, false).await?;
+
         Ok(())
     }
 
@@ -753,7 +754,7 @@ impl NetMDInterface {
         Ok(value as u16)
     }
 
-    async fn track_change(&mut self, direction: Track) -> Result<(), InterfaceError> {
+    pub async fn track_change(&mut self, direction: Direction) -> Result<(), InterfaceError> {
         let mut query = format_query(
             "1850 ff10 00000000 %w".to_string(),
             vec![QueryValue::Number(direction as i64)],
@@ -765,21 +766,6 @@ impl NetMDInterface {
         scan_query(reply, "1850 0010 00000000 %?%?".to_string())?;
 
         Ok(())
-    }
-
-    /// Change to the next track (skip forward)
-    pub async fn next_track(&mut self) -> Result<(), InterfaceError> {
-        self.track_change(Track::Next).await
-    }
-
-    /// Change to the next track (skip back)
-    pub async fn previous_track(&mut self) -> Result<(), InterfaceError> {
-        self.track_change(Track::Previous).await
-    }
-
-    /// Change to the next track (skip to beginning of track)
-    pub async fn restart_track(&mut self) -> Result<(), InterfaceError> {
-        self.track_change(Track::Restart).await
     }
 
     /// Erase the disc entirely
@@ -1094,7 +1080,7 @@ impl NetMDInterface {
 
         let new_len = new_title.len();
 
-        if self.net_md_device.vendor_id() == 0x04dd {
+        if self.device.vendor_id() == 0x04dd {
             self.change_descriptor_state(&Descriptor::AudioUTOC1TD, &DescriptorAction::OpenWrite)
                 .await?
         } else {
@@ -1116,7 +1102,7 @@ impl NetMDInterface {
 
         let _ = self.send_query(&mut query, false, false).await;
 
-        if self.net_md_device.vendor_id() == 0x04dd {
+        if self.device.vendor_id() == 0x04dd {
             self.change_descriptor_state(&Descriptor::AudioUTOC1TD, &DescriptorAction::Close)
                 .await?
         } else {
@@ -1414,7 +1400,7 @@ impl NetMDInterface {
         let codec = res[1].to_i64().unwrap() as u8;
         let length = res[2].to_i64().unwrap() as usize;
 
-        let result = self.net_md_device.read_bulk(length, 0x10000).await?;
+        let result = self.device.read_bulk(length, 0x10000).await?;
 
         scan_query(
             self.read_reply(false).await?,
@@ -1613,7 +1599,7 @@ impl NetMDInterface {
         discformat: u8,
         frames: u32,
         pkt_size: u32,
-        // key   // iv    // data
+        // key, iv, data
         mut packets: UnboundedReceiver<(Vec<u8>, Vec<u8>, Vec<u8>)>,
         hex_session_key: &[u8],
         progress_callback: F,
@@ -1644,7 +1630,7 @@ impl NetMDInterface {
             reply,
             "1800 080046 f0030103 28 00 000100 1001 %?%? 00 %*".to_string(),
         )?;
-        self.net_md_device.poll().await?;
+        self.device.poll().await?;
 
         // Sharps are slow
         cross_sleep(Duration::from_millis(200)).await;
@@ -1659,7 +1645,7 @@ impl NetMDInterface {
             } else {
                 data
             };
-            self.net_md_device.write_bulk(&binpack).await?;
+            self.device.write_bulk(&binpack).await?;
             _written_bytes += binpack.len();
             packet_count += 1;
             (progress_callback)(total_bytes, _written_bytes);
@@ -1670,7 +1656,7 @@ impl NetMDInterface {
         }
 
         reply = self.read_reply(false).await?;
-        self.net_md_device.poll().await?;
+        self.device.poll().await?;
         let res = scan_query(
             reply,
             "1800 080046 f0030103 28 00 000100 1001 %w 00 %?%? %?%?%?%? %?%?%?%? %*".to_string(),
@@ -1714,13 +1700,13 @@ type TDesCbcEnc = cbc::Encryptor<des::TdesEde3>;
 
 pub fn retailmac(key: &[u8], value: &[u8], iv: &[u8; 8]) -> Vec<u8> {
     let mut subkey_a = [0u8; 8];
-    subkey_a.clone_from_slice(&key[0..8]);
+    subkey_a.copy_from_slice(&key[0..8]);
 
     let mut beginning = [0u8; 8];
-    beginning.clone_from_slice(&value[0..8]);
+    beginning.copy_from_slice(&value[0..8]);
 
     let mut end = [0u8; 8];
-    end.clone_from_slice(&value[8..]);
+    end.copy_from_slice(&value[8..]);
 
     DesCbcEnc::new(&subkey_a.into(), iv.into())
         .encrypt_padded_mut::<NoPadding>(&mut beginning, 8)
@@ -1729,8 +1715,8 @@ pub fn retailmac(key: &[u8], value: &[u8], iv: &[u8; 8]) -> Vec<u8> {
     let iv2 = &beginning[beginning.len() - 8..];
 
     let mut wonky_key = [0u8; 24];
-    wonky_key[0..16].clone_from_slice(key);
-    wonky_key[16..].clone_from_slice(&key[0..8]);
+    wonky_key[0..16].copy_from_slice(key);
+    wonky_key[16..].copy_from_slice(&key[0..8]);
     TDesCbcEnc::new(&wonky_key.into(), iv2.into())
         .encrypt_padded_mut::<NoPadding>(&mut end, 8)
         .unwrap();
@@ -1753,7 +1739,7 @@ pub struct EKBData {
     signature: [u8; 24],
 }
 
-pub struct EKBOpenSource {}
+pub struct EKBOpenSource;
 
 impl EKBOpenSource {
     pub fn root_key(&self) -> [u8; 16] {
@@ -1954,7 +1940,7 @@ impl<'a> MDSession<'a> {
     pub fn new(md: &'a mut NetMDInterface) -> Self {
         MDSession {
             md,
-            ekb_object: EKBOpenSource {},
+            ekb_object: EKBOpenSource,
             hex_session_key: None,
         }
     }

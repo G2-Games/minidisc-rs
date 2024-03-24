@@ -6,8 +6,9 @@ use once_cell::sync::Lazy;
 use thiserror::Error;
 
 // USB stuff
-use cross_usb::usb::{ControlIn, ControlOut, ControlType, Device, Interface, Recipient, UsbError};
-use cross_usb::{UsbDevice, UsbInterface};
+use cross_usb::prelude::*;
+use cross_usb::usb::{ControlIn, ControlOut, ControlType, Recipient, UsbError};
+use cross_usb::{Interface, Descriptor};
 
 use super::utils::cross_sleep;
 
@@ -116,7 +117,7 @@ pub enum NetMDError {
 
 /// A USB connection to a NetMD device
 pub struct NetMD {
-    usb_interface: UsbInterface,
+    usb_interface: Interface,
     model: DeviceId,
 }
 
@@ -124,10 +125,10 @@ impl NetMD {
     const READ_REPLY_RETRY_INTERVAL: u32 = 10;
 
     /// Creates a new interface to a NetMD device
-    pub async fn new(usb_device: &UsbDevice) -> Result<Self, NetMDError> {
+    pub async fn new(usb_descriptor: Descriptor) -> Result<Self, NetMDError> {
         let mut model = DeviceId {
-            vendor_id: usb_device.vendor_id().await,
-            product_id: usb_device.product_id().await,
+            vendor_id: usb_descriptor.vendor_id().await,
+            product_id: usb_descriptor.product_id().await,
             name: None,
         };
 
@@ -145,6 +146,7 @@ impl NetMD {
             Some(_) => (),
         }
 
+        let usb_device = usb_descriptor.open().await?;
         let usb_interface = usb_device.open_interface(0).await?;
 
         Ok(Self {
