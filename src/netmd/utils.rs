@@ -8,7 +8,7 @@ use unicode_normalization::UnicodeNormalization;
 extern crate kana;
 use kana::*;
 
-/// Sleep for a specified number of milliseconds on any platform
+/// Sleep for a specified [Duration] on any platform
 pub async fn cross_sleep(duration: Duration) {
     #[cfg(not(target_family = "wasm"))]
     std::thread::sleep(duration);
@@ -75,27 +75,32 @@ pub fn get_bytes<const S: usize>(iterator: &mut IntoIter<u8>) -> Result<[u8; S],
     Ok(bytes)
 }
 
-pub fn length_after_encoding_to_jis(string: &str) -> usize {
+pub fn length_after_encoding_to_sjis(string: &str) -> usize {
     let new_string = SHIFT_JIS.encode(string);
 
     new_string.0.len()
 }
 
-pub fn validate_shift_jis(sjis_string: Vec<u8>) -> bool {
+pub fn validate_sjis(sjis_string: Vec<u8>) -> bool {
     let (_, _, had_errors) = SHIFT_JIS.decode(&sjis_string);
 
     had_errors
 }
 
+/// Ensure string contains only hardware allowed characters
 fn check(string: String) -> Option<String> {
-    if MAPPINGS_HW.contains_key(&string) {
-        return Some(MAPPINGS_HW.get(&string).unwrap().to_string());
+    if MAPPINGS_HW.contains_key(string.as_str()) {
+        return Some(MAPPINGS_HW.get(string.as_str()).unwrap().to_string());
     }
     let mut ch = string.chars();
-    if (ch.next().unwrap() as u32) < 0x7f || ALLOWED_HW_KANA.contains(&string) {
+    if (ch.next().unwrap() as u32) < 0x7f || ALLOWED_HW_KANA.contains(&string.as_str()) {
         return Some(string);
     }
     None
+}
+
+fn half_width_title_length(title: &str) {
+
 }
 
 pub fn sanitize_half_width_title(title: &str) -> Vec<u8> {
@@ -115,7 +120,7 @@ pub fn sanitize_half_width_title(title: &str) -> Vec<u8> {
 
     let sjis_string = SHIFT_JIS.encode(&new_title).0;
 
-    if validate_shift_jis(sjis_string.clone().into()) {
+    if validate_sjis(sjis_string.clone().into()) {
         return agressive_sanitize_title(title).into();
     }
 
@@ -126,24 +131,25 @@ pub fn sanitize_half_width_title(title: &str) -> Vec<u8> {
 pub fn sanitize_full_width_title(title: &str, just_remap: bool) -> Vec<u8> {
     let new_title: String = title
         .chars()
+        .map(|c| c.to_string())
         .map(|character| {
-            match MAPPINGS_JP.get(&character.to_string()) {
-                Some(string) => string.clone(),
-                None => character.to_string().clone(),
+            match MAPPINGS_JP.get(character.to_string().as_str()) {
+                Some(string) => string,
+                None => character.as_str(),
             }
             .to_string()
         })
         .map(|character| {
-            match MAPPINGS_RU.get(&character.to_string()) {
-                Some(string) => string.clone(),
-                None => character.to_string().clone(),
+            match MAPPINGS_RU.get(character.as_str()) {
+                Some(string) => string,
+                None => character.as_str(),
             }
             .to_string()
         })
         .map(|character| {
-            match MAPPINGS_DE.get(&character.to_string()) {
-                Some(string) => string.clone(),
-                None => character.to_string().clone(),
+            match MAPPINGS_DE.get(character.as_str()) {
+                Some(string) => string,
+                None => character.as_str(),
             }
             .to_string()
         })
@@ -155,7 +161,7 @@ pub fn sanitize_full_width_title(title: &str, just_remap: bool) -> Vec<u8> {
 
     let sjis_string = SHIFT_JIS.encode(&new_title).0;
 
-    if validate_shift_jis(sjis_string.clone().into()) {
+    if validate_sjis(sjis_string.clone().into()) {
         return agressive_sanitize_title(title).into();
     }
 
@@ -173,9 +179,28 @@ pub fn agressive_sanitize_title(title: &str) -> String {
     .into()
 }
 
-pub fn time_to_duration(time: &[u64]) -> std::time::Duration {
-    assert_eq!(time.len(), 4);
-    std::time::Duration::from_micros(
-        (time[0] * 3600000000) + (time[1] * 60000000) + (time[2] * 1000000) + (time[3] * 11600),
-    )
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct RawTime {
+    pub hours: u64,
+    pub minutes: u64,
+    pub seconds: u64,
+    pub frames: u64,
+}
+
+impl Into<Duration> for RawTime {
+    fn into(self) -> std::time::Duration {
+        self.as_duration()
+    }
+}
+
+impl RawTime {
+    pub fn as_duration(&self) -> Duration {
+        std::time::Duration::from_micros(
+            (self.hours * 3600000000) + (self.minutes * 60000000) + (self.seconds * 1000000) + (self.frames * 11600),
+        )
+    }
+
+    pub fn as_frames(&self) -> u64 {
+        ((self.hours * 60 + self.minutes) * 60 + self.seconds) * 512 + self.frames
+    }
 }

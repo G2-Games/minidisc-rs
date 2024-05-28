@@ -1,23 +1,19 @@
 use crate::netmd::utils;
-use lazy_static::lazy_static;
-use std::collections::hash_map::HashMap;
 use thiserror::Error;
 
-lazy_static! {
-    /// %b, w, d, q - explained above (can have endiannes overriden by '>' and '<' operators, f. ex. %>d %<q)
-    /// %s - Uint8Array preceded by 2 bytes of length
-    /// %x - Uint8Array preceded by 2 bytes of length
-    /// %z - Uint8Array preceded by 1 byte of length
-    /// %* - raw Uint8Array
-    /// %B - BCD-encoded 1-byte number
-    /// %W - BCD-encoded 2-byte number
-    static ref FORMAT_TYPE_LEN_DICT: HashMap<char, i32> = HashMap::from([
-        ('b', 1), // byte
-        ('w', 2), // word
-        ('d', 4), // doubleword
-        ('q', 8), // quadword
-    ]);
-}
+/// %b, w, d, q - explained above (can have endiannes overriden by '>' and '<' operators, f. ex. %>d %<q)
+/// %s - Uint8Array preceded by 2 bytes of length
+/// %x - Uint8Array preceded by 2 bytes of length
+/// %z - Uint8Array preceded by 1 byte of length
+/// %* - raw Uint8Array
+/// %B - BCD-encoded 1-byte number
+/// %W - BCD-encoded 2-byte number
+static FORMAT_TYPE_LEN_DICT: phf::Map<char, i32> = phf::phf_map!{
+    'b' => 1, // byte
+    'w' => 2, // word
+    'd' => 4, // doubleword
+    'q' => 8, // quadword
+};
 
 const DEBUG: bool = false;
 
@@ -37,11 +33,11 @@ pub enum ValueError {
 }
 
 impl QueryValue {
-    pub fn from_array<const S: usize>(value: [u8; S]) -> Self {
+    pub fn _from_array<const S: usize>(value: [u8; S]) -> Self {
         Self::Array(value.to_vec())
     }
 
-    pub fn to_array<const S: usize>(&self) -> Result<[u8; S], ValueError> {
+    pub fn _to_array<const S: usize>(&self) -> Result<[u8; S], ValueError> {
         let mut array = [0u8; S];
         match self {
             QueryValue::Array(a) => {
@@ -70,6 +66,20 @@ impl QueryValue {
     pub fn to_i64(&self) -> Result<i64, ValueError> {
         match self {
             QueryValue::Number(a) => Ok(*a),
+            _ => Err(ValueError::TypeMismatch {
+                expected: String::from("i64"),
+                actual: format!("{:?}", self)
+            }),
+        }
+    }
+}
+
+impl TryInto<i64> for QueryValue {
+    type Error = ValueError;
+
+    fn try_into(self) -> Result<i64, Self::Error> {
+        match self {
+            QueryValue::Number(a) => Ok(a),
             _ => Err(ValueError::TypeMismatch {
                 expected: String::from("i64"),
                 actual: format!("{:?}", self)

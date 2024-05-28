@@ -2,8 +2,9 @@
 use crate::netmd::base;
 use crate::netmd::query_utils::{format_query, scan_query, QueryValue};
 use crate::netmd::utils::{
-    half_width_to_full_width_range, length_after_encoding_to_jis, sanitize_full_width_title,
-    sanitize_half_width_title, time_to_duration,
+    half_width_to_full_width_range, length_after_encoding_to_sjis, sanitize_full_width_title,
+    sanitize_half_width_title,
+    RawTime,
 };
 use cbc::cipher::block_padding::NoPadding;
 use cbc::cipher::{BlockDecryptMut, BlockEncryptMut, KeyInit, KeyIvInit};
@@ -15,8 +16,6 @@ use std::time::Duration;
 use thiserror::Error;
 use std::error::Error;
 use tokio::sync::mpsc::UnboundedReceiver;
-
-use lazy_static::lazy_static;
 
 use super::base::NetMD;
 use super::utils::cross_sleep;
@@ -52,7 +51,7 @@ pub enum WireFormat {
 }
 
 impl WireFormat {
-    fn frame_size(&self) -> u16 {
+    const fn frame_size(&self) -> u16 {
         match self {
             WireFormat::Pcm => 2048,
             WireFormat::L105kbps => 192,
@@ -60,18 +59,47 @@ impl WireFormat {
             WireFormat::LP4 => 96,
         }
     }
+
+    const fn disc_for_wire(&self) -> DiscFormat {
+        match self {
+            WireFormat::Pcm => DiscFormat::SPStereo,
+            WireFormat::L105kbps => DiscFormat::LP2,
+            WireFormat::LP2 => DiscFormat::LP2,
+            WireFormat::LP4 => DiscFormat::LP4,
+        }
+    }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum Encoding {
     SP = 0x90,
     LP2 = 0x92,
     LP4 = 0x93,
 }
 
-enum Channels {
+impl ToString for Encoding {
+    fn to_string(&self) -> String {
+        match self {
+            Encoding::SP => String::from("sp"),
+            Encoding::LP2 => String::from("lp2"),
+            Encoding::LP4 => String::from("lp4"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum Channels {
     Mono = 0x01,
     Stereo = 0x00,
+}
+
+impl ToString for Channels {
+    fn to_string(&self) -> String {
+        match self {
+            Channels::Mono => String::from("mono"),
+            Channels::Stereo => String::from("stereo"),
+        }
+    }
 }
 
 enum ChannelCount {
@@ -79,12 +107,22 @@ enum ChannelCount {
     Stereo = 2,
 }
 
-enum TrackFlag {
+#[derive(Debug, Clone, Copy, FromPrimitive)]
+pub enum TrackFlag {
     Protected = 0x03,
     Unprotected = 0x00,
 }
 
-enum DiscFlag {
+impl ToString for TrackFlag {
+    fn to_string(&self) -> String {
+        match self {
+            TrackFlag::Protected => String::from("protected"),
+            TrackFlag::Unprotected => String::from("unprotected"),
+        }
+    }
+}
+
+pub enum DiscFlag {
     Writable = 0x10,
     WriteProtected = 0x40,
 }
@@ -159,15 +197,6 @@ enum NetmdStatus {
     Implemented = 0x0c,
     Changed = 0x0d,
     Interim = 0x0f,
-}
-
-lazy_static! {
-    static ref FRAME_SIZE: HashMap<WireFormat, usize> = HashMap::from([
-        (WireFormat::Pcm, 2048),
-        (WireFormat::LP2, 192),
-        (WireFormat::L105kbps, 152),
-        (WireFormat::LP4, 96),
-    ]);
 }
 
 #[derive(Error, Debug, Eq, PartialEq, PartialOrd, Ord)]
@@ -1065,7 +1094,7 @@ impl NetMDInterface {
         }
 
         let new_title: Vec<u8>;
-        let old_len = length_after_encoding_to_jis(&current_title);
+        let old_len = length_after_encoding_to_sjis(&current_title);
 
         let wchar_value = match wchar {
             true => {
@@ -1143,7 +1172,7 @@ impl NetMDInterface {
                 if title == current_title {
                     return Ok(());
                 }
-                length_after_encoding_to_jis(&current_title) as u16
+                length_after_encoding_to_sjis(&current_title) as u16
             }
             Err(error) if error.to_string() == "Rejected" => 0,
             Err(error) => return Err(error),
@@ -1232,12 +1261,12 @@ impl NetMDInterface {
         Ok(res[0].to_vec().unwrap())
     }
 
-    /// Gets the length of tracks as a [std::time::Duration] from a set
+    /// Gets the length of tracks as a raw duration from a set
     pub async fn track_lengths(
         &mut self,
         tracks: Vec<u16>,
-    ) -> Result<Vec<std::time::Duration>, InterfaceError> {
-        let mut times: Vec<std::time::Duration> = vec![];
+    ) -> Result<Vec<RawTime>, InterfaceError> {
+        let mut times = vec![];
 
         self.change_descriptor_state(&Descriptor::AudioContentsTD, &DescriptorAction::OpenRead)
             .await?;
@@ -1269,8 +1298,12 @@ impl NetMDInterface {
                 .map(|v| v.to_i64().unwrap() as u64)
                 .collect();
 
-            let length = time_to_duration(&times_num);
-            times.push(length);
+            times.push(RawTime {
+                hours: times_num[0],
+                minutes: times_num[1],
+                seconds: times_num[2],
+                frames: times_num[3],
+            });
         }
 
         self.change_descriptor_state(&Descriptor::AudioContentsTD, &DescriptorAction::Close)
@@ -1279,20 +1312,20 @@ impl NetMDInterface {
         Ok(times)
     }
 
-    /// Gets the length of a track as a [std::time::Duration]
+    /// Gets the length of a track as a raw duration
     pub async fn track_length(
         &mut self,
         track: u16,
-    ) -> Result<std::time::Duration, InterfaceError> {
+    ) -> Result<RawTime, InterfaceError> {
         Ok(self.track_lengths([track].into()).await?[0])
     }
 
     /// Gets the encoding of a track (SP, LP2, LP4)
-    pub async fn track_encoding(&mut self, track_number: u16) -> Result<Encoding, InterfaceError> {
+    pub async fn track_encoding(&mut self, track_number: u16) -> Result<(Encoding, Channels), InterfaceError> {
         let raw_value = self.raw_track_info(track_number, 0x3080, 0x0700).await?;
         let result = scan_query(raw_value, "07 0004 0110 %b %b".to_string())?;
 
-        let final_encoding = match result[0].to_i64() {
+        let encoding = match result[0].to_i64() {
             Ok(0x90) => Encoding::SP,
             Ok(0x92) => Encoding::LP2,
             Ok(0x93) => Encoding::LP4,
@@ -1300,7 +1333,14 @@ impl NetMDInterface {
             Err(_) => unreachable!(),
         };
 
-        Ok(final_encoding)
+        let channels = match result[0].to_i64() {
+            Ok(0x01) => Channels::Stereo,
+            Ok(0x00) => Channels::Mono,
+            Ok(e) => return Err(InterfaceError::InvalidEncoding(e as u8)),
+            Err(_) => unreachable!(),
+        };
+
+        Ok((encoding, channels))
     }
 
     /// Gets a track's flags
@@ -1323,36 +1363,34 @@ impl NetMDInterface {
     }
 
     /// Gets the disc capacity as a [std::time::Duration]
-    pub async fn disc_capacity(&mut self) -> Result<[std::time::Duration; 3], InterfaceError> {
+    pub async fn disc_capacity(&mut self) -> Result<[RawTime; 3], InterfaceError> {
         self.change_descriptor_state(&Descriptor::RootTD, &DescriptorAction::OpenRead)
             .await?;
 
         let mut query = format_query("1806 02101000 3080 0300 ff00 00000000".to_string(), vec![])?;
         let reply = self.send_query(&mut query, false, false).await?;
-        let mut result: [std::time::Duration; 3] = [std::time::Duration::from_secs(0); 3];
 
         // 8003 changed to %?03 - Panasonic returns 0803 instead. This byte's meaning is unknown
         let res = scan_query(
             reply,
             "1806 02101000 3080 0300 1000 001d0000 001b %?03 0017 8000 0005 %W %B %B %B 0005 %W %B %B %B 0005 %W %B %B %B".to_string()
-        )?; //25^
-        let res_num: Vec<u64> = res
-            .into_iter()
-            .map(|v| v.to_i64().unwrap() as u64)
-            .collect();
+        )?;
 
-        // Create 3 values, `Frames Used`, `Frames Total`, and `Frames Left`
-        for i in 0..3 {
-            let tmp = &res_num[(4 * i)..=(4 * i) + 3];
-            let time_micros =
-                (tmp[0] * 3600000000) + (tmp[1] * 60000000) + (tmp[2] * 1000000) + (tmp[3] * 11600);
-            result[i] = std::time::Duration::from_micros(time_micros);
-        }
+        let res_num: Vec<RawTime> = res
+            .windows(4)
+            .step_by(4)
+            .map(|t| RawTime {
+                hours: t[0].to_i64().unwrap() as u64,
+                minutes: t[1].to_i64().unwrap() as u64,
+                seconds: t[2].to_i64().unwrap() as u64,
+                frames: t[3].to_i64().unwrap() as u64,
+            })
+            .collect();
 
         self.change_descriptor_state(&Descriptor::RootTD, &DescriptorAction::Close)
             .await?;
 
-        Ok(result)
+        Ok(res_num.try_into().unwrap())
     }
 
     pub async fn recording_parameters(&mut self) -> Result<Vec<u8>, InterfaceError> {
@@ -1724,15 +1762,6 @@ pub fn retailmac(key: &[u8], value: &[u8], iv: &[u8; 8]) -> Vec<u8> {
     end[..8].to_vec()
 }
 
-lazy_static! {
-    static ref DISC_FOR_WIRE: HashMap<WireFormat, DiscFormat> = HashMap::from([
-        (WireFormat::Pcm, DiscFormat::SPStereo),
-        (WireFormat::LP2, DiscFormat::LP2),
-        (WireFormat::L105kbps, DiscFormat::LP2),
-        (WireFormat::LP4, DiscFormat::LP4),
-    ]);
-}
-
 pub struct EKBData {
     chains: [[u8; 16]; 2],
     depth: i32,
@@ -1811,7 +1840,7 @@ impl MDTrack {
     }
 
     pub fn frame_size(&self) -> usize {
-        *FRAME_SIZE.get(&self.format).unwrap()
+        self.format.frame_size() as usize
     }
 
     pub fn chunk_size(&self) -> usize {
@@ -1907,7 +1936,7 @@ impl<'a> MDSession<'a> {
             )
             .await?;
         let data_format = track.data_format();
-        let final_disc_format = disc_format.unwrap_or(*DISC_FOR_WIRE.get(&data_format).unwrap());
+        let final_disc_format = disc_format.unwrap_or(data_format.disc_for_wire());
 
         let (track_index, uuid, ccid) = self
             .md

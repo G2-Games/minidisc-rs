@@ -5,7 +5,10 @@ use std::error::Error;
 use std::time::Duration;
 use cross_usb::Descriptor;
 
-use super::interface::{MDSession, MDTrack, NetMDInterface, Direction, InterfaceError};
+use crate::netmd::interface::DiscFlag;
+use crate::netmd::utils::RawTime;
+
+use super::interface::{Channels, Encoding, InterfaceError, MDSession, MDTrack, NetMDInterface, TrackFlag};
 use super::utils::cross_sleep;
 
 #[derive(FromPrimitive, PartialEq, Eq)]
@@ -34,6 +37,66 @@ pub struct DeviceStatus {
     pub time: Time,
 }
 
+#[derive(Clone)]
+pub struct Track {
+    index: u16,
+    title: String,
+    full_width_title: String,
+    duration: RawTime,
+    channel: Channels,
+    encoding: Encoding,
+    protected: TrackFlag,
+}
+
+impl Track {
+    pub fn chars_to_cells(len: usize) -> usize {
+        f32::ceil(len as f32 / 7.0) as usize
+    }
+
+    pub async fn cells_for_title(&mut self) {
+        let encoding_name_correction = match self.encoding {
+            Encoding::SP => 0,
+            _ => 1
+        };
+
+        let full_width_length = Self::chars_to_cells(self.full_width_title.len() * 2);
+    }
+}
+
+pub struct Group {
+    index: u16,
+    title: Option<String>,
+    full_width_title: Option<String>,
+    tracks: Vec<Track>,
+}
+
+pub struct Disc {
+    title: String,
+    full_width_title: String,
+    writeable: bool,
+    write_protected: bool,
+    used: u64,
+    left: u64,
+    total: u64,
+    track_count: u16,
+    groups: Vec<Group>,
+}
+
+impl Disc {
+    pub async fn track_count(&self) -> u16 {
+        self.groups.iter()
+            .map(|g| g.tracks.len())
+            .reduce(|acc, s| acc + s)
+            .unwrap() as u16
+    }
+
+    pub async fn tracks(&self) -> Vec<Track> {
+        self.groups.iter()
+            .flat_map(|g| g.tracks.clone())
+            .collect()
+    }
+}
+
 pub struct NetMDContext {
     interface: NetMDInterface,
 }
@@ -48,6 +111,7 @@ impl NetMDContext {
         })
     }
 
+    /*
     /// Change to the next track (skip forward)
     pub async fn next_track(&mut self) -> Result<(), InterfaceError> {
         self.interface.track_change(Direction::Next).await
@@ -62,6 +126,7 @@ impl NetMDContext {
     pub async fn restart_track(&mut self) -> Result<(), InterfaceError> {
         self.interface.track_change(Direction::Restart).await
     }
+    */
 
     pub async fn device_status(&mut self) -> Result<DeviceStatus, Box<dyn Error>> {
         let status = self.interface.status().await?;
@@ -131,5 +196,73 @@ impl NetMDContext {
         self.interface.release().await?;
 
         Ok(result)
+    }
+
+    pub async fn list_content(&mut self) -> Result<Disc, Box<dyn Error>> {
+        let flags = self.interface.disc_flags().await?;
+        let title = self.interface.disc_title(false).await?;
+        let full_width_title = self.interface.disc_title(true).await?;
+        let disc_capacity: [RawTime; 3] = self.interface.disc_capacity().await?;
+        let track_count = self.interface.track_count().await?;
+
+        let mut frames_used = disc_capacity[0].as_frames();
+        let mut frames_total = disc_capacity[1].as_frames();
+        let mut frames_left = disc_capacity[2].as_frames();
+
+        // Some devices report the time remaining of the currently selected recording mode. (Sharps)
+        while frames_total > 512 * 60 * 82 {
+            frames_used /= 2;
+            frames_total /= 2;
+            frames_left /= 2;
+        }
+
+        let track_group_list = self.interface.track_group_list().await?;
+
+        let mut groups = vec![];
+        for (index, group) in track_group_list.iter().enumerate() {
+            let mut tracks = vec![];
+            for track in &group.2 {
+                let (encoding, channel) = self.interface.track_encoding(*track).await?;
+                let duration = self.interface.track_length(*track).await?;
+                let flags = self.interface.track_flags(*track).await?;
+                let title = self.interface.track_title(*track, false).await?;
+                let full_width_title = self.interface.track_title(*track, true).await?;
+
+                tracks.push(
+                    Track {
+                        index: *track,
+                        title,
+                        full_width_title,
+                        duration,
+                        channel,
+                        encoding,
+                        protected: TrackFlag::from_u8(flags).unwrap(),
+                    }
+                )
+            }
+
+            groups.push(
+                Group {
+                    index: index as u16,
+                    title: group.0.clone(),
+                    full_width_title: group.1.clone(),
+                    tracks
+                }
+            )
+        }
+
+        let disc = Disc {
+            title,
+            full_width_title,
+            writeable: (flags & DiscFlag::Writable as u8) != 0,
+            write_protected: (flags & DiscFlag::WriteProtected as u8) != 0,
+            used: frames_used,
+            left: frames_left,
+            total: frames_total,
+            track_count,
+            groups
+        };
+
+        Ok(disc)
     }
 }
