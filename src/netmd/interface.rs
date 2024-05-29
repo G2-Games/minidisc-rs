@@ -1339,10 +1339,10 @@ impl NetMDInterface {
             Err(_) => unreachable!(),
         };
 
-        let channels = match result[0].to_i64() {
-            Ok(0x01) => Channels::Stereo,
-            Ok(0x00) => Channels::Mono,
-            Ok(e) => return Err(InterfaceError::InvalidEncoding(e as u8)),
+        let channels = match result[1].to_i64() {
+            Ok(0x00) => Channels::Stereo,
+            Ok(0x01) => Channels::Mono,
+            Ok(e) => return Err(InterfaceError::InvalidDiscFormat(e as u8)),
             Err(_) => unreachable!(),
         };
 

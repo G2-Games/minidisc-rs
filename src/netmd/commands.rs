@@ -18,7 +18,7 @@ use super::utils::{
     sanitize_full_width_title, sanitize_half_width_title,
 };
 
-#[derive(FromPrimitive, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, FromPrimitive, PartialEq, Eq)]
 pub enum OperatingStatus {
     Ready = 50687,
     Playing = 50037,
@@ -31,12 +31,14 @@ pub enum OperatingStatus {
     ReadyForTransfer = 65319,
 }
 
+#[derive(Debug, Clone)]
 pub struct Time {
     pub minute: u16,
     pub second: u16,
     pub frame: u16,
 }
 
+#[derive(Debug, Clone)]
 pub struct DeviceStatus {
     pub disc_present: bool,
     pub state: Option<OperatingStatus>,
@@ -44,7 +46,7 @@ pub struct DeviceStatus {
     pub time: Time,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Track {
     index: u16,
     title: String,
@@ -72,6 +74,7 @@ impl Track {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct Group {
     index: u16,
     title: Option<String>,
@@ -79,6 +82,7 @@ pub struct Group {
     tracks: Vec<Track>,
 }
 
+#[derive(Debug, Clone)]
 pub struct Disc {
     title: String,
     full_width_title: String,
@@ -101,7 +105,10 @@ impl Disc {
     }
 
     pub fn tracks(&self) -> Vec<Track> {
-        self.groups.iter().flat_map(|g| g.tracks.clone()).collect()
+        let mut tracks: Vec<Track> = self.groups.iter().flat_map(|g| g.tracks.clone()).collect();
+        tracks.sort_unstable_by_key(|t| t.index);
+
+        tracks
     }
 
     fn remaining_characters_for_titles(
@@ -334,7 +341,7 @@ impl NetMDContext {
         for (index, group) in track_group_list.iter().enumerate() {
             let mut tracks = vec![];
             for track in &group.2 {
-                let (encoding, channel) = self.interface.track_encoding(*track).await?;
+                let (encoding, channel) = self.interface.track_encoding(*track).await.unwrap();
                 let duration = self.interface.track_length(*track).await?;
                 let flags = self.interface.track_flags(*track).await?;
                 let title = self.interface.track_title(*track, false).await?;
@@ -540,6 +547,22 @@ impl NetMDContext {
         self.interface.release().await?;
 
         Ok(result)
+    }
+
+    pub fn interface(&self) -> &NetMDInterface {
+        &self.interface
+    }
+
+    pub fn interface_mut(&mut self) -> &mut NetMDInterface {
+        &mut self.interface
+    }
+}
+
+impl From<NetMDInterface> for NetMDContext {
+    fn from(value: NetMDInterface) -> Self {
+        Self {
+            interface: value
+        }
     }
 }
 

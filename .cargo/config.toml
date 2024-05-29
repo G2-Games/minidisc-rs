@@ -2,5 +2,5 @@
 rustflags = ["--cfg=web_sys_unstable_apis"]
 
 # Enable for testing WASM-only stuff
-#[build]
+[build]
 #target = "wasm32-unknown-unknown"

@@ -4,6 +4,11 @@ use rand::RngCore;
 use std::thread;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver};
 
+#[cfg(target_family = "wasm")]
+use gloo::worker::{Spawnable, reactor::{reactor, ReactorScope}};
+#[cfg(target_family = "wasm")]
+use futures::{sink::SinkExt, StreamExt};
+
 use super::interface::DataEncryptorInput;
 
 type DesEcbEnc = ecb::Decryptor<des::Des>;
@@ -13,7 +18,8 @@ pub fn new_thread_encryptor(
     _input: DataEncryptorInput,
 ) -> UnboundedReceiver<(Vec<u8>, Vec<u8>, Vec<u8>)> {
     let (tx, rx) = unbounded_channel::<(Vec<u8>, Vec<u8>, Vec<u8>)>();
-    let input = Box::from(_input);
+    let input = _input;
+
     thread::spawn(move || {
         let mut iv = [0u8; 8];
 
@@ -74,4 +80,14 @@ pub fn new_thread_encryptor(
     });
 
     rx
+}
+
+#[cfg(target_family = "wasm")]
+#[reactor]
+async fn Encryptor(mut scope: ReactorScope<u64, u64>) {
+    while let Some(m) = scope.next().await {
+        if scope.send(m.pow(2)).await.is_err() {
+            break;
+        }
+    }
 }
