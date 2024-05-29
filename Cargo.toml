@@ -26,7 +26,7 @@ encoding_rs = "0.8.33"
 nofmt = "1.0.0"
 once_cell = "1.18.0"
 unicode-normalization = "0.1.22"
-regex = "1.10.2"
+regex = "1.10"
 cross_usb = "0.3"
 num-derive = "0.3.3"
 num-traits = "0.2.14"
@@ -39,9 +39,10 @@ tokio = { version = "1.36", features = ["sync"] }
 g2-unicode-jp = "0.4.1"
 thiserror = "1.0.57"
 phf = { version = "0.11.2", features = ["phf_macros", "macros"] }
+byteorder = "1.5.0"
 
 [target.'cfg(target_family = "wasm")'.dependencies]
-gloo = { version = "0.11.0", features = ["futures"] }
+gloo = { version = "0.11.0", features = ["futures", "worker"] }
 
 [package.metadata.wasm-pack.profile.dev.wasm-bindgen]
 dwarf-debug-info = true

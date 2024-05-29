@@ -18,7 +18,7 @@ use std::error::Error;
 use tokio::sync::mpsc::UnboundedReceiver;
 
 use super::base::NetMD;
-use super::utils::cross_sleep;
+use super::utils::{cross_sleep, to_sjis};
 
 #[derive(Copy, Clone)]
 enum Action {
@@ -34,7 +34,7 @@ pub enum Direction {
     Restart = 0x0001,
 }
 
-#[derive(Debug, Clone, Copy, FromPrimitive)]
+#[derive(Debug, Clone, Copy, FromPrimitive, PartialEq, Eq)]
 pub enum DiscFormat {
     LP4 = 0,
     LP2 = 2,
@@ -846,7 +846,7 @@ impl NetMDInterface {
     }
 
     /// Gets the disc title as it is stored
-    async fn raw_disc_title(&mut self, wchar: bool) -> Result<String, InterfaceError> {
+    pub async fn raw_disc_title(&mut self, wchar: bool) -> Result<String, InterfaceError> {
         self.change_descriptor_state(&Descriptor::AudioContentsTD, &DescriptorAction::OpenRead)
             .await?;
         self.change_descriptor_state(&Descriptor::DiscTitleTD, &DescriptorAction::OpenRead)
@@ -1098,11 +1098,11 @@ impl NetMDInterface {
 
         let wchar_value = match wchar {
             true => {
-                new_title = sanitize_full_width_title(title, false);
+                new_title = to_sjis(&sanitize_full_width_title(title));
                 1
             }
             false => {
-                new_title = sanitize_half_width_title(title);
+                new_title = to_sjis(&sanitize_half_width_title(title));
                 0
             }
         };
@@ -1156,11 +1156,11 @@ impl NetMDInterface {
         let new_title: Vec<u8>;
         let (wchar_value, descriptor) = match wchar {
             true => {
-                new_title = sanitize_full_width_title(title, false);
+                new_title = to_sjis(&sanitize_full_width_title(title));
                 (3, Descriptor::AudioUTOC4TD)
             }
             false => {
-                new_title = sanitize_half_width_title(title);
+                new_title = to_sjis(&sanitize_half_width_title(title));
                 (2, Descriptor::AudioUTOC1TD)
             }
         };
@@ -1418,9 +1418,10 @@ impl NetMDInterface {
     /// Gets the bytes of a track
     ///
     /// This can only be executed on an MZ-RH1 / M200
-    pub async fn save_track_to_array(
+    pub async fn save_track_to_array<F: Fn(usize, usize)>(
         &mut self,
         track: u16,
+        progress_callback: Option<F>
     ) -> Result<(DiscFormat, u16, Vec<u8>), InterfaceError> {
         let mut query = format_query(
             "1800 080046 f003010330 ff00 1001 %w".to_string(),
@@ -1438,14 +1439,14 @@ impl NetMDInterface {
         let codec = res[1].to_i64().unwrap() as u8;
         let length = res[2].to_i64().unwrap() as usize;
 
-        let result = self.device.read_bulk(length, 0x10000).await?;
+        let result = self.device.read_bulk(length, 0x10000, progress_callback).await?;
 
         scan_query(
             self.read_reply(false).await?,
             "1800 080046 f003010330 0000 1001 %?%? %?%?".to_string(),
         )?;
 
-        std::thread::sleep(std::time::Duration::from_millis(500));
+        cross_sleep(Duration::from_millis(500)).await;
 
         let format: DiscFormat = match codec & 0x06 {
             0 => DiscFormat::LP4,

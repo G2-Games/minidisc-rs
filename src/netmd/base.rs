@@ -1,7 +1,6 @@
 #![cfg_attr(debug_assertions, allow(dead_code))]
 use std::time::Duration;
 
-use nofmt;
 use once_cell::sync::Lazy;
 use thiserror::Error;
 
@@ -15,58 +14,54 @@ use super::utils::cross_sleep;
 const BULK_WRITE_ENDPOINT: u8 = 0x02;
 const BULK_READ_ENDPOINT: u8 = 0x81;
 
-pub static DEVICE_IDS: Lazy<Box<[DeviceId]>> = Lazy::new(|| {
-    nofmt::pls! {
-        Box::new([
-            DeviceId {vendor_id: 0x04dd, product_id: 0x7202, name: Some(String::from("Sharp IM-MT899H"))},
-            DeviceId {vendor_id: 0x04dd, product_id: 0x9013, name: Some(String::from("Sharp IM-DR400"))},
-            DeviceId {vendor_id: 0x04dd, product_id: 0x9014, name: Some(String::from("Sharp IM-DR80"))},
-            DeviceId {vendor_id: 0x054c, product_id: 0x0034, name: Some(String::from("Sony PCLK-XX"))},
-            DeviceId {vendor_id: 0x054c, product_id: 0x0036, name: Some(String::from("Sony"))},
-            DeviceId {vendor_id: 0x054c, product_id: 0x0075, name: Some(String::from("Sony MZ-N1"))},
-            DeviceId {vendor_id: 0x054c, product_id: 0x007c, name: Some(String::from("Sony"))},
-            DeviceId {vendor_id: 0x054c, product_id: 0x0080, name: Some(String::from("Sony LAM-1"))},
-            DeviceId {vendor_id: 0x054c, product_id: 0x0081, name: Some(String::from("Sony MDS-JB980/MDS-NT1/MDS-JE780"))},
-            DeviceId {vendor_id: 0x054c, product_id: 0x0084, name: Some(String::from("Sony MZ-N505"))},
-            DeviceId {vendor_id: 0x054c, product_id: 0x0085, name: Some(String::from("Sony MZ-S1"))},
-            DeviceId {vendor_id: 0x054c, product_id: 0x0086, name: Some(String::from("Sony MZ-N707"))},
-            DeviceId {vendor_id: 0x054c, product_id: 0x008e, name: Some(String::from("Sony CMT-C7NT"))},
-            DeviceId {vendor_id: 0x054c, product_id: 0x0097, name: Some(String::from("Sony PCGA-MDN1"))},
-            DeviceId {vendor_id: 0x054c, product_id: 0x00ad, name: Some(String::from("Sony CMT-L7HD"))},
-            DeviceId {vendor_id: 0x054c, product_id: 0x00c6, name: Some(String::from("Sony MZ-N10"))},
-            DeviceId {vendor_id: 0x054c, product_id: 0x00c7, name: Some(String::from("Sony MZ-N910"))},
-            DeviceId {vendor_id: 0x054c, product_id: 0x00c8, name: Some(String::from("Sony MZ-N710/NF810"))},
-            DeviceId {vendor_id: 0x054c, product_id: 0x00c9, name: Some(String::from("Sony MZ-N510/N610"))},
-            DeviceId {vendor_id: 0x054c, product_id: 0x00ca, name: Some(String::from("Sony MZ-NE410/NF520D"))},
-            DeviceId {vendor_id: 0x054c, product_id: 0x00e7, name: Some(String::from("Sony CMT-M333NT/M373NT"))},
-            DeviceId {vendor_id: 0x054c, product_id: 0x00eb, name: Some(String::from("Sony MZ-NE810/NE910"))},
-            DeviceId {vendor_id: 0x054c, product_id: 0x0101, name: Some(String::from("Sony LAM"))},
-            DeviceId {vendor_id: 0x054c, product_id: 0x0113, name: Some(String::from("Aiwa AM-NX1"))},
-            DeviceId {vendor_id: 0x054c, product_id: 0x013f, name: Some(String::from("Sony MDS-S500"))},
-            DeviceId {vendor_id: 0x054c, product_id: 0x014c, name: Some(String::from("Aiwa AM-NX9"))},
-            DeviceId {vendor_id: 0x054c, product_id: 0x017e, name: Some(String::from("Sony MZ-NH1"))},
-            DeviceId {vendor_id: 0x054c, product_id: 0x0180, name: Some(String::from("Sony MZ-NH3D"))},
-            DeviceId {vendor_id: 0x054c, product_id: 0x0182, name: Some(String::from("Sony MZ-NH900"))},
-            DeviceId {vendor_id: 0x054c, product_id: 0x0184, name: Some(String::from("Sony MZ-NH700/NH800"))},
-            DeviceId {vendor_id: 0x054c, product_id: 0x0186, name: Some(String::from("Sony MZ-NH600"))},
-            DeviceId {vendor_id: 0x054c, product_id: 0x0187, name: Some(String::from("Sony MZ-NH600D"))},
-            DeviceId {vendor_id: 0x054c, product_id: 0x0188, name: Some(String::from("Sony MZ-N920"))},
-            DeviceId {vendor_id: 0x054c, product_id: 0x018a, name: Some(String::from("Sony LAM-3"))},
-            DeviceId {vendor_id: 0x054c, product_id: 0x01e9, name: Some(String::from("Sony MZ-DH10P"))},
-            DeviceId {vendor_id: 0x054c, product_id: 0x0219, name: Some(String::from("Sony MZ-RH10"))},
-            DeviceId {vendor_id: 0x054c, product_id: 0x021b, name: Some(String::from("Sony MZ-RH710/MZ-RH910"))},
-            DeviceId {vendor_id: 0x054c, product_id: 0x021d, name: Some(String::from("Sony CMT-AH10"))},
-            DeviceId {vendor_id: 0x054c, product_id: 0x022c, name: Some(String::from("Sony CMT-AH10"))},
-            DeviceId {vendor_id: 0x054c, product_id: 0x023c, name: Some(String::from("Sony DS-HMD1"))},
-            DeviceId {vendor_id: 0x054c, product_id: 0x0286, name: Some(String::from("Sony MZ-RH1"))},
-            DeviceId {vendor_id: 0x054c, product_id: 0x011a, name: Some(String::from("Sony CMT-SE7"))},
-            DeviceId {vendor_id: 0x054c, product_id: 0x0148, name: Some(String::from("Sony MDS-A1"))},
-            DeviceId {vendor_id: 0x0b28, product_id: 0x1004, name: Some(String::from("Kenwood MDX-J9"))},
-            DeviceId {vendor_id: 0x04da, product_id: 0x23b3, name: Some(String::from("Panasonic SJ-MR250"))},
-            DeviceId {vendor_id: 0x04da, product_id: 0x23b6, name: Some(String::from("Panasonic SJ-MR270"))},
-        ])
-    }
-});
+pub static DEVICE_IDS: &[DeviceId] = &[
+    DeviceId {vendor_id: 0x04dd, product_id: 0x7202, name: Some("Sharp IM-MT899H")},
+    DeviceId {vendor_id: 0x04dd, product_id: 0x9013, name: Some("Sharp IM-DR400")},
+    DeviceId {vendor_id: 0x04dd, product_id: 0x9014, name: Some("Sharp IM-DR80")},
+    DeviceId {vendor_id: 0x054c, product_id: 0x0034, name: Some("Sony PCLK-XX")},
+    DeviceId {vendor_id: 0x054c, product_id: 0x0036, name: Some("Sony")},
+    DeviceId {vendor_id: 0x054c, product_id: 0x0075, name: Some("Sony MZ-N1")},
+    DeviceId {vendor_id: 0x054c, product_id: 0x007c, name: Some("Sony")},
+    DeviceId {vendor_id: 0x054c, product_id: 0x0080, name: Some("Sony LAM-1")},
+    DeviceId {vendor_id: 0x054c, product_id: 0x0081, name: Some("Sony MDS-JB980/MDS-NT1/MDS-JE780")},
+    DeviceId {vendor_id: 0x054c, product_id: 0x0084, name: Some("Sony MZ-N505")},
+    DeviceId {vendor_id: 0x054c, product_id: 0x0085, name: Some("Sony MZ-S1")},
+    DeviceId {vendor_id: 0x054c, product_id: 0x0086, name: Some("Sony MZ-N707")},
+    DeviceId {vendor_id: 0x054c, product_id: 0x008e, name: Some("Sony CMT-C7NT")},
+    DeviceId {vendor_id: 0x054c, product_id: 0x0097, name: Some("Sony PCGA-MDN1")},
+    DeviceId {vendor_id: 0x054c, product_id: 0x00ad, name: Some("Sony CMT-L7HD")},
+    DeviceId {vendor_id: 0x054c, product_id: 0x00c6, name: Some("Sony MZ-N10")},
+    DeviceId {vendor_id: 0x054c, product_id: 0x00c7, name: Some("Sony MZ-N910")},
+    DeviceId {vendor_id: 0x054c, product_id: 0x00c8, name: Some("Sony MZ-N710/NF810")},
+    DeviceId {vendor_id: 0x054c, product_id: 0x00c9, name: Some("Sony MZ-N510/N610")},
+    DeviceId {vendor_id: 0x054c, product_id: 0x00ca, name: Some("Sony MZ-NE410/NF520D")},
+    DeviceId {vendor_id: 0x054c, product_id: 0x00e7, name: Some("Sony CMT-M333NT/M373NT")},
+    DeviceId {vendor_id: 0x054c, product_id: 0x00eb, name: Some("Sony MZ-NE810/NE910")},
+    DeviceId {vendor_id: 0x054c, product_id: 0x0101, name: Some("Sony LAM")},
+    DeviceId {vendor_id: 0x054c, product_id: 0x0113, name: Some("Aiwa AM-NX1")},
+    DeviceId {vendor_id: 0x054c, product_id: 0x013f, name: Some("Sony MDS-S500")},
+    DeviceId {vendor_id: 0x054c, product_id: 0x014c, name: Some("Aiwa AM-NX9")},
+    DeviceId {vendor_id: 0x054c, product_id: 0x017e, name: Some("Sony MZ-NH1")},
+    DeviceId {vendor_id: 0x054c, product_id: 0x0180, name: Some("Sony MZ-NH3D")},
+    DeviceId {vendor_id: 0x054c, product_id: 0x0182, name: Some("Sony MZ-NH900")},
+    DeviceId {vendor_id: 0x054c, product_id: 0x0184, name: Some("Sony MZ-NH700/NH800")},
+    DeviceId {vendor_id: 0x054c, product_id: 0x0186, name: Some("Sony MZ-NH600")},
+    DeviceId {vendor_id: 0x054c, product_id: 0x0187, name: Some("Sony MZ-NH600D")},
+    DeviceId {vendor_id: 0x054c, product_id: 0x0188, name: Some("Sony MZ-N920")},
+    DeviceId {vendor_id: 0x054c, product_id: 0x018a, name: Some("Sony LAM-3")},
+    DeviceId {vendor_id: 0x054c, product_id: 0x01e9, name: Some("Sony MZ-DH10P")},
+    DeviceId {vendor_id: 0x054c, product_id: 0x0219, name: Some("Sony MZ-RH10")},
+    DeviceId {vendor_id: 0x054c, product_id: 0x021b, name: Some("Sony MZ-RH710/MZ-RH910")},
+    DeviceId {vendor_id: 0x054c, product_id: 0x021d, name: Some("Sony CMT-AH10")},
+    DeviceId {vendor_id: 0x054c, product_id: 0x022c, name: Some("Sony CMT-AH10")},
+    DeviceId {vendor_id: 0x054c, product_id: 0x023c, name: Some("Sony DS-HMD1")},
+    DeviceId {vendor_id: 0x054c, product_id: 0x0286, name: Some("Sony MZ-RH1")},
+    DeviceId {vendor_id: 0x054c, product_id: 0x011a, name: Some("Sony CMT-SE7")},
+    DeviceId {vendor_id: 0x054c, product_id: 0x0148, name: Some("Sony MDS-A1")},
+    DeviceId {vendor_id: 0x0b28, product_id: 0x1004, name: Some("Kenwood MDX-J9")},
+    DeviceId {vendor_id: 0x04da, product_id: 0x23b3, name: Some("Panasonic SJ-MR250")},
+    DeviceId {vendor_id: 0x04da, product_id: 0x23b6, name: Some("Panasonic SJ-MR270")},
+];
 
 pub static DEVICE_IDS_CROSSUSB: Lazy<Box<[cross_usb::DeviceFilter]>> = Lazy::new(|| {
     DEVICE_IDS.iter().map(|d|{
@@ -94,7 +89,7 @@ pub enum Status {
 pub struct DeviceId {
     vendor_id: u16,
     product_id: u16,
-    name: Option<String>,
+    name: Option<&'static str>,
 }
 
 #[derive(Error, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -156,8 +151,8 @@ impl NetMD {
     }
 
     /// Gets the device name, this is limited to the devices in the list
-    pub fn device_name(&self) -> &Option<String> {
-        &self.model.name
+    pub fn device_name(&self) -> Option<&str> {
+        self.model.name
     }
 
     /// Gets the vendor id
@@ -310,20 +305,22 @@ impl NetMD {
     }
 
     // Default chunksize should be 0x10000
-    pub async fn read_bulk(
+    pub async fn read_bulk<F: Fn(usize, usize)>(
         &mut self,
         length: usize,
         chunksize: usize,
+        progress_callback: Option<F>,
     ) -> Result<Vec<u8>, NetMDError> {
-        let result = self.read_bulk_to_array(length, chunksize).await?;
+        let result = self.read_bulk_to_array(length, chunksize, progress_callback).await?;
 
         Ok(result)
     }
 
-    pub async fn read_bulk_to_array(
+    pub async fn read_bulk_to_array<F: Fn(usize, usize)>(
         &mut self,
         length: usize,
         chunksize: usize,
+        progress_callback: Option<F>,
     ) -> Result<Vec<u8>, NetMDError> {
         let mut final_result: Vec<u8> = Vec::new();
         let mut done = 0;
@@ -340,6 +337,10 @@ impl NetMD {
                 Ok(result) => result,
                 Err(error) => return Err(NetMDError::UsbError(error)),
             };
+
+            if let Some(cb) = &progress_callback {
+                cb(length, done)
+            }
 
             final_result.extend_from_slice(&res);
         }
