@@ -1,16 +1,22 @@
 #![cfg_attr(debug_assertions, allow(dead_code))]
+use cross_usb::Descriptor;
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
 use regex::Regex;
 use std::error::Error;
 use std::time::Duration;
-use cross_usb::Descriptor;
 
 use crate::netmd::interface::DiscFlag;
 use crate::netmd::utils::{create_aea_header, create_wav_header, AeaOptions, RawTime};
 
-use super::interface::{Channels, Direction, DiscFormat, Encoding, InterfaceError, MDSession, MDTrack, NetMDInterface, TrackFlag};
-use super::utils::{cross_sleep, half_width_title_length, half_width_to_full_width_range, sanitize_full_width_title, sanitize_half_width_title};
+use super::interface::{
+    Channels, Direction, DiscFormat, Encoding, InterfaceError, MDSession, MDTrack, NetMDInterface,
+    TrackFlag,
+};
+use super::utils::{
+    cross_sleep, half_width_title_length, half_width_to_full_width_range,
+    sanitize_full_width_title, sanitize_half_width_title,
+};
 
 #[derive(FromPrimitive, PartialEq, Eq)]
 pub enum OperatingStatus {
@@ -53,7 +59,7 @@ impl Track {
     pub fn cells_for_title(&self) -> (usize, usize) {
         let encoding_name_correction = match self.encoding {
             Encoding::SP => 0,
-            _ => 1
+            _ => 1,
         };
 
         let full_width_length = chars_to_cells(self.full_width_title.len() * 2);
@@ -87,19 +93,22 @@ pub struct Disc {
 
 impl Disc {
     pub fn track_count(&self) -> u16 {
-        self.groups.iter()
+        self.groups
+            .iter()
             .map(|g| g.tracks.len())
             .reduce(|acc, s| acc + s)
             .unwrap() as u16
     }
 
     pub fn tracks(&self) -> Vec<Track> {
-        self.groups.iter()
-            .flat_map(|g| g.tracks.clone())
-            .collect()
+        self.groups.iter().flat_map(|g| g.tracks.clone()).collect()
     }
 
-    fn remaining_characters_for_titles(&self, ignore_disc_titles: bool, include_groups: bool) -> (usize, usize) {
+    fn remaining_characters_for_titles(
+        &self,
+        ignore_disc_titles: bool,
+        include_groups: bool,
+    ) -> (usize, usize) {
         const CELL_LIMIT: usize = 255;
 
         let groups = self.groups.iter().filter(|g| g.title.is_some());
@@ -119,17 +128,13 @@ impl Disc {
                 let min_group_index = indices.iter().min().unwrap();
                 let max_group_index = indices.iter().max().unwrap();
 
-                let range = format!(
-                    "{}{}",
-                    min_group_index + 1,
-                    {
-                        if group.tracks.len() - 1 != 0 {
-                            format!("-{}", max_group_index + 1)
-                        } else {
-                            String::from("")
-                        }
+                let range = format!("{}{}", min_group_index + 1, {
+                    if group.tracks.len() - 1 != 0 {
+                        format!("-{}", max_group_index + 1)
+                    } else {
+                        String::from("")
                     }
-                );
+                });
 
                 fw_title.push_str((group.full_width_title.clone().unwrap() + &range).as_str());
                 hw_title.push_str((group.title.clone().unwrap() + &range).as_str());
@@ -150,16 +155,26 @@ impl Disc {
 
         (
             usize::max(CELL_LIMIT - used_full_width_cells, 0) * 7,
-            usize::max(CELL_LIMIT - used_half_width_cells, 0) * 7
+            usize::max(CELL_LIMIT - used_half_width_cells, 0) * 7,
         )
     }
 
     pub fn compile_disc_titles(&self) -> (String, String) {
-        let (available_full_width, available_half_width) = self.remaining_characters_for_titles(true, false);
+        let (available_full_width, available_half_width) =
+            self.remaining_characters_for_titles(true, false);
 
-        let use_full_width =
-            self.groups.iter().filter(|n| n.full_width_title.as_ref().is_some_and(|t| !t.is_empty())).count() > 0 ||
-            self.tracks().iter().filter(|t| !t.full_width_title.is_empty()).count() > 0;
+        let use_full_width = self
+            .groups
+            .iter()
+            .filter(|n| n.full_width_title.as_ref().is_some_and(|t| !t.is_empty()))
+            .count()
+            > 0
+            || self
+                .tracks()
+                .iter()
+                .filter(|t| !t.full_width_title.is_empty())
+                .count()
+                > 0;
 
         let mut new_raw_title = String::new();
         let mut new_raw_full_width_title = String::new();
@@ -176,23 +191,36 @@ impl Disc {
                 continue;
             }
 
-            let min_group_index = group.tracks.iter().map(|t| t.index).min().unwrap_or_default();
+            let min_group_index = group
+                .tracks
+                .iter()
+                .map(|t| t.index)
+                .min()
+                .unwrap_or_default();
             let mut range = format!("{}", min_group_index + 1);
 
             if group.tracks.len() != 1 {
-                range.push_str(&format!("-{}", min_group_index as usize + group.tracks.len()));
+                range.push_str(&format!(
+                    "-{}",
+                    min_group_index as usize + group.tracks.len()
+                ));
             }
 
-            let new_raw_title_after_group = new_raw_title.clone() + &format!("{};{}//", range, group.title.as_ref().unwrap());
-            let new_raw_full_width_title_after_group =
-                new_raw_full_width_title.clone() +
-                    &half_width_to_full_width_range(&range) +
-                    &format!("；{}／／", group.full_width_title.as_ref().unwrap_or(&String::new()));
+            let new_raw_title_after_group =
+                new_raw_title.clone() + &format!("{};{}//", range, group.title.as_ref().unwrap());
+            let new_raw_full_width_title_after_group = new_raw_full_width_title.clone()
+                + &half_width_to_full_width_range(&range)
+                + &format!(
+                    "；{}／／",
+                    group.full_width_title.as_ref().unwrap_or(&String::new())
+                );
 
-            let half_width_titles_length_in_toc = chars_to_cells(half_width_title_length(&new_raw_title_after_group));
+            let half_width_titles_length_in_toc =
+                chars_to_cells(half_width_title_length(&new_raw_title_after_group));
 
             if use_full_width {
-                let full_width_titles_length_in_toc = chars_to_cells(new_raw_full_width_title_after_group.len() * 2) * 7;
+                let full_width_titles_length_in_toc =
+                    chars_to_cells(new_raw_full_width_title_after_group.len() * 2) * 7;
                 if available_full_width as isize - full_width_titles_length_in_toc as isize >= 0 {
                     new_raw_full_width_title = new_raw_full_width_title_after_group
                 }
@@ -203,7 +231,8 @@ impl Disc {
             }
         }
 
-        let half_width_titles_length_in_toc = chars_to_cells(half_width_title_length(&new_raw_title)) * 7;
+        let half_width_titles_length_in_toc =
+            chars_to_cells(half_width_title_length(&new_raw_title)) * 7;
         let full_width_titles_length_in_toc = chars_to_cells(new_raw_full_width_title.len() * 2);
 
         if (available_half_width as isize - half_width_titles_length_in_toc as isize) < 0 {
@@ -219,7 +248,7 @@ impl Disc {
                 new_raw_full_width_title
             } else {
                 String::new()
-            }
+            },
         )
     }
 }
@@ -233,9 +262,7 @@ impl NetMDContext {
     pub async fn new(device: Descriptor) -> Result<Self, InterfaceError> {
         let interface = NetMDInterface::new(device).await?;
 
-        Ok(Self {
-            interface,
-        })
+        Ok(Self { interface })
     }
 
     /// Change to the next track (skip forward)
@@ -313,27 +340,23 @@ impl NetMDContext {
                 let title = self.interface.track_title(*track, false).await?;
                 let full_width_title = self.interface.track_title(*track, true).await?;
 
-                tracks.push(
-                    Track {
-                        index: *track,
-                        title,
-                        full_width_title,
-                        duration,
-                        channel,
-                        encoding,
-                        protected: TrackFlag::from_u8(flags).unwrap(),
-                    }
-                )
+                tracks.push(Track {
+                    index: *track,
+                    title,
+                    full_width_title,
+                    duration,
+                    channel,
+                    encoding,
+                    protected: TrackFlag::from_u8(flags).unwrap(),
+                })
             }
 
-            groups.push(
-                Group {
-                    index: index as u16,
-                    title: group.0.clone(),
-                    full_width_title: group.1.clone(),
-                    tracks
-                }
-            )
+            groups.push(Group {
+                index: index as u16,
+                title: group.0.clone(),
+                full_width_title: group.1.clone(),
+                tracks,
+            })
         }
 
         let disc = Disc {
@@ -345,7 +368,7 @@ impl NetMDContext {
             left: frames_left,
             total: frames_total,
             track_count,
-            groups
+            groups,
         };
 
         Ok(disc)
@@ -355,12 +378,18 @@ impl NetMDContext {
         let (new_raw_title, new_raw_full_width_title) = disc.compile_disc_titles();
 
         self.interface.set_disc_title(&new_raw_title, false).await?;
-        self.interface.set_disc_title(&new_raw_full_width_title, false).await?;
+        self.interface
+            .set_disc_title(&new_raw_full_width_title, false)
+            .await?;
 
         Ok(())
     }
 
-    pub async fn rename_disc(&mut self, new_name: &str, new_fw_name: Option<&str>) -> Result<(), Box<dyn Error>> {
+    pub async fn rename_disc(
+        &mut self,
+        new_name: &str,
+        new_fw_name: Option<&str>,
+    ) -> Result<(), Box<dyn Error>> {
         let new_name = sanitize_half_width_title(new_name);
         let new_fw_name = if let Some(name) = new_fw_name {
             Some(sanitize_full_width_title(name))
@@ -384,40 +413,47 @@ impl NetMDContext {
             if has_fw_groups {
                 if has_fw_groups_and_title {
                     let re = Regex::new("/^０；.*?／／/").unwrap();
-                    new_fw_name_with_groups = re.replace_all(
-                        &old_raw_fw_name,
-                        if !new_fw_name.as_ref().unwrap().is_empty() {
-                            format!("０；{}／／", new_fw_name.unwrap())
-                        } else {
-                            String::new()
-                        }
-                    ).into()
+                    new_fw_name_with_groups = re
+                        .replace_all(
+                            &old_raw_fw_name,
+                            if !new_fw_name.as_ref().unwrap().is_empty() {
+                                format!("０；{}／／", new_fw_name.unwrap())
+                            } else {
+                                String::new()
+                            },
+                        )
+                        .into()
                 } else {
-                    new_fw_name_with_groups = format!(r"０；{}／／{}", new_fw_name.unwrap(), old_raw_fw_name);
+                    new_fw_name_with_groups =
+                        format!(r"０；{}／／{}", new_fw_name.unwrap(), old_raw_fw_name);
                 }
             } else {
                 new_fw_name_with_groups = new_fw_name.unwrap();
             }
 
-            self.interface.set_disc_title(&new_fw_name_with_groups, true).await?;
+            self.interface
+                .set_disc_title(&new_fw_name_with_groups, true)
+                .await?;
         }
 
         if new_name == old_name {
-            return Ok(())
+            return Ok(());
         }
 
         let new_name_with_groups;
         if has_groups {
             if has_groups_and_title {
                 let re = Regex::new(r"/^0;.*?\/\//").unwrap();
-                new_name_with_groups = re.replace_all(
-                    &old_raw_name,
-                    if !new_name.is_empty() {
-                        format!("0;{}//", new_name)
-                    } else {
-                        String::new()
-                    }
-                ).into()
+                new_name_with_groups = re
+                    .replace_all(
+                        &old_raw_name,
+                        if !new_name.is_empty() {
+                            format!("0;{}//", new_name)
+                        } else {
+                            String::new()
+                        },
+                    )
+                    .into()
             } else {
                 new_name_with_groups = format!("0;{}//{}", new_name, old_raw_name);
             }
@@ -425,7 +461,9 @@ impl NetMDContext {
             new_name_with_groups = new_name
         }
 
-        self.interface.set_disc_title(&new_name_with_groups, false).await?;
+        self.interface
+            .set_disc_title(&new_name_with_groups, false)
+            .await?;
 
         Ok(())
     }
@@ -433,10 +471,13 @@ impl NetMDContext {
     pub async fn upload<F: Fn(usize, usize)>(
         &mut self,
         track: u16,
-        progress_callback: Option<F>
+        progress_callback: Option<F>,
     ) -> Result<(DiscFormat, Vec<u8>), Box<dyn Error>> {
         let mut output_vec = Vec::new();
-        let (format, _frames, result) = self.interface.save_track_to_array(track, progress_callback).await?;
+        let (format, _frames, result) = self
+            .interface
+            .save_track_to_array(track, progress_callback)
+            .await?;
 
         let header;
         match format {
@@ -448,10 +489,10 @@ impl NetMDContext {
                     ..Default::default()
                 };
                 header = create_aea_header(aea_options);
-            },
+            }
             DiscFormat::LP2 | DiscFormat::LP4 => {
                 header = create_wav_header(format, result.len() as u32);
-            },
+            }
         }
 
         output_vec.extend_from_slice(&header);
@@ -462,7 +503,8 @@ impl NetMDContext {
 
     pub async fn prepare_download(&mut self) -> Result<(), Box<dyn Error>> {
         while ![OperatingStatus::DiscBlank, OperatingStatus::Ready].contains(
-            &self.device_status()
+            &self
+                .device_status()
                 .await?
                 .state
                 .unwrap_or(OperatingStatus::NoDisc),

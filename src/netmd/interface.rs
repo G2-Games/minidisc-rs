@@ -3,8 +3,7 @@ use crate::netmd::base;
 use crate::netmd::query_utils::{format_query, scan_query, QueryValue};
 use crate::netmd::utils::{
     half_width_to_full_width_range, length_after_encoding_to_sjis, sanitize_full_width_title,
-    sanitize_half_width_title,
-    RawTime,
+    sanitize_half_width_title, RawTime,
 };
 use cbc::cipher::block_padding::NoPadding;
 use cbc::cipher::{BlockDecryptMut, BlockEncryptMut, KeyInit, KeyIvInit};
@@ -12,9 +11,9 @@ use encoding_rs::SHIFT_JIS;
 use num_derive::FromPrimitive;
 use rand::RngCore;
 use std::collections::HashMap;
+use std::error::Error;
 use std::time::Duration;
 use thiserror::Error;
-use std::error::Error;
 use tokio::sync::mpsc::UnboundedReceiver;
 
 use super::base::NetMD;
@@ -318,7 +317,8 @@ impl NetMDInterface {
         self.change_descriptor_state(
             &Descriptor::DiscSubunitIdentifier,
             &DescriptorAction::OpenRead,
-        ).await?;
+        )
+        .await?;
 
         let mut query = format_query("1809 00 ff00 0000 0000".to_string(), vec![])?;
 
@@ -450,7 +450,11 @@ impl NetMDInterface {
         Ok(result)
     }
 
-    async fn send_command(&mut self, query: &mut Vec<u8>, test: bool) -> Result<(), InterfaceError> {
+    async fn send_command(
+        &mut self,
+        query: &mut Vec<u8>,
+        test: bool,
+    ) -> Result<(), InterfaceError> {
         let status_byte = match test {
             true => NetmdStatus::GeneralInquiry,
             false => NetmdStatus::Control,
@@ -479,7 +483,9 @@ impl NetMDInterface {
                 NetmdStatus::NotImplemented => {
                     return Err(InterfaceError::NotImplemented(format!("{:02X?}", data)))
                 }
-                NetmdStatus::Rejected => return Err(InterfaceError::Rejected(format!("{:02X?}", data))),
+                NetmdStatus::Rejected => {
+                    return Err(InterfaceError::Rejected(format!("{:02X?}", data)))
+                }
                 NetmdStatus::Interim if !accept_interim => {
                     let sleep_time = Self::INTERIM_RESPONSE_RETRY_INTERVAL
                         * (u32::pow(2, current_attempt as u32) - 1);
@@ -571,7 +577,8 @@ impl NetMDInterface {
         self.change_descriptor_state(
             &Descriptor::OperatingStatusBlock,
             &DescriptorAction::OpenRead,
-        ).await?;
+        )
+        .await?;
 
         let mut query = format_query(
             "1809 8001 0230 8800 0030 8804 00 ff00 00000000".to_string(),
@@ -693,11 +700,9 @@ impl NetMDInterface {
 
         let reply = match self.send_query(&mut query, false, false).await {
             Ok(result) => result,
-            Err(e) => {
-                match e {
-                    InterfaceError::Rejected(_) => Vec::new(),
-                    _ => return Err(e)
-                }
+            Err(e) => match e {
+                InterfaceError::Rejected(_) => Vec::new(),
+                _ => return Err(e),
             },
         };
 
@@ -1000,9 +1005,10 @@ impl NetMDInterface {
             let mut track_list: Vec<u16> = Vec::new();
             for track in track_min - 1..track_max {
                 if track_dict.contains_key(&track) {
-                    return Err(
-                        InterfaceError::GroupError(format!("track {} is in 2 groups", track))
-                    );
+                    return Err(InterfaceError::GroupError(format!(
+                        "track {} is in 2 groups",
+                        track
+                    )));
                 }
                 track_dict.insert(track, (String::from(group_name), i as u16));
                 track_list.push(track);
@@ -1313,15 +1319,15 @@ impl NetMDInterface {
     }
 
     /// Gets the length of a track as a raw duration
-    pub async fn track_length(
-        &mut self,
-        track: u16,
-    ) -> Result<RawTime, InterfaceError> {
+    pub async fn track_length(&mut self, track: u16) -> Result<RawTime, InterfaceError> {
         Ok(self.track_lengths([track].into()).await?[0])
     }
 
     /// Gets the encoding of a track (SP, LP2, LP4)
-    pub async fn track_encoding(&mut self, track_number: u16) -> Result<(Encoding, Channels), InterfaceError> {
+    pub async fn track_encoding(
+        &mut self,
+        track_number: u16,
+    ) -> Result<(Encoding, Channels), InterfaceError> {
         let raw_value = self.raw_track_info(track_number, 0x3080, 0x0700).await?;
         let result = scan_query(raw_value, "07 0004 0110 %b %b".to_string())?;
 
@@ -1421,7 +1427,7 @@ impl NetMDInterface {
     pub async fn save_track_to_array<F: Fn(usize, usize)>(
         &mut self,
         track: u16,
-        progress_callback: Option<F>
+        progress_callback: Option<F>,
     ) -> Result<(DiscFormat, u16, Vec<u8>), InterfaceError> {
         let mut query = format_query(
             "1800 080046 f003010330 ff00 1001 %w".to_string(),
@@ -1439,7 +1445,10 @@ impl NetMDInterface {
         let codec = res[1].to_i64().unwrap() as u8;
         let length = res[2].to_i64().unwrap() as usize;
 
-        let result = self.device.read_bulk(length, 0x10000, progress_callback).await?;
+        let result = self
+            .device
+            .read_bulk(length, 0x10000, progress_callback)
+            .await?;
 
         scan_query(
             self.read_reply(false).await?,
@@ -1545,7 +1554,10 @@ impl NetMDInterface {
         hostnonce: Vec<u8>,
     ) -> Result<Vec<u8>, InterfaceError> {
         if hostnonce.len() != 8 {
-            return Err(EncryptionError::InvalidLength("host nonce", hostnonce.len()))?;
+            return Err(EncryptionError::InvalidLength(
+                "host nonce",
+                hostnonce.len(),
+            ))?;
         }
 
         let mut query = format_query(
@@ -1576,13 +1588,22 @@ impl NetMDInterface {
         hex_session_key: &[u8],
     ) -> Result<(), InterfaceError> {
         if contentid.len() != 20 {
-            return Err(EncryptionError::InvalidLength("content ID", contentid.len()))?;
+            return Err(EncryptionError::InvalidLength(
+                "content ID",
+                contentid.len(),
+            ))?;
         }
         if keyenckey.len() != 8 {
-            return Err(EncryptionError::InvalidLength("key encryption", keyenckey.len()))?;
+            return Err(EncryptionError::InvalidLength(
+                "key encryption",
+                keyenckey.len(),
+            ))?;
         }
         if hex_session_key.len() != 8 {
-            return Err(EncryptionError::InvalidLength("session key", hex_session_key.len()))?;
+            return Err(EncryptionError::InvalidLength(
+                "session key",
+                hex_session_key.len(),
+            ))?;
         }
 
         let mut message = [vec![1, 1, 1, 1], contentid.to_vec(), keyenckey.to_vec()].concat();
@@ -1608,7 +1629,10 @@ impl NetMDInterface {
         hex_session_key: &[u8],
     ) -> Result<(), InterfaceError> {
         if hex_session_key.len() != 8 {
-            return Err(EncryptionError::InvalidLength("hex session key", hex_session_key.len()))?;
+            return Err(EncryptionError::InvalidLength(
+                "hex session key",
+                hex_session_key.len(),
+            ))?;
         }
 
         let mut message = [0u8; 8];
@@ -1647,7 +1671,10 @@ impl NetMDInterface {
         F: Fn(usize, usize),
     {
         if hex_session_key.len() != 8 {
-            return Err(EncryptionError::InvalidLength("hex session key", hex_session_key.len()))?;
+            return Err(EncryptionError::InvalidLength(
+                "hex session key",
+                hex_session_key.len(),
+            ))?;
         }
 
         // Sharps are slow

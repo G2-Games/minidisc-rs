@@ -8,7 +8,7 @@ use thiserror::Error;
 /// %* - raw Uint8Array
 /// %B - BCD-encoded 1-byte number
 /// %W - BCD-encoded 2-byte number
-static FORMAT_TYPE_LEN_DICT: phf::Map<char, i32> = phf::phf_map!{
+static FORMAT_TYPE_LEN_DICT: phf::Map<char, i32> = phf::phf_map! {
     'b' => 1, // byte
     'w' => 2, // word
     'd' => 4, // doubleword
@@ -26,10 +26,7 @@ pub enum QueryValue {
 #[derive(Error, Debug, Eq, PartialEq, PartialOrd, Ord)]
 pub enum ValueError {
     #[error("type mismatch: expected {expected}, got {actual}")]
-    TypeMismatch {
-        expected: String,
-        actual: String
-    }
+    TypeMismatch { expected: String, actual: String },
 }
 
 impl QueryValue {
@@ -45,10 +42,10 @@ impl QueryValue {
                     array[i] = *byte
                 }
                 Ok(array)
-            },
+            }
             _ => Err(ValueError::TypeMismatch {
                 expected: String::from("Vec<u8>"),
-                actual: format!("{:?}", self)
+                actual: format!("{:?}", self),
             }),
         }
     }
@@ -58,7 +55,7 @@ impl QueryValue {
             QueryValue::Array(a) => Ok(a.to_vec()),
             _ => Err(ValueError::TypeMismatch {
                 expected: String::from("Vec<u8>"),
-                actual: format!("{:?}", self)
+                actual: format!("{:?}", self),
             }),
         }
     }
@@ -68,7 +65,7 @@ impl QueryValue {
             QueryValue::Number(a) => Ok(*a),
             _ => Err(ValueError::TypeMismatch {
                 expected: String::from("i64"),
-                actual: format!("{:?}", self)
+                actual: format!("{:?}", self),
             }),
         }
     }
@@ -82,7 +79,7 @@ impl TryInto<i64> for QueryValue {
             QueryValue::Number(a) => Ok(a),
             _ => Err(ValueError::TypeMismatch {
                 expected: String::from("i64"),
-                actual: format!("{:?}", self)
+                actual: format!("{:?}", self),
             }),
         }
     }
@@ -99,7 +96,7 @@ pub enum QueryError {
         expected: u8,
         actual: u8,
         format_string: String,
-    }
+    },
 }
 
 /// Formats a query using a standard input to send to the player
@@ -198,10 +195,7 @@ pub fn format_query(format: String, args: Vec<QueryValue>) -> Result<Vec<u8>, Qu
 }
 
 /// Scans a result using a standard input to recieve from the player
-pub fn scan_query(
-    query_result: Vec<u8>,
-    format: String,
-) -> Result<Vec<QueryValue>, QueryError> {
+pub fn scan_query(query_result: Vec<u8>, format: String) -> Result<Vec<QueryValue>, QueryError> {
     let mut result: Vec<QueryValue> = Vec::new();
 
     let initial_length = query_result.len();
@@ -307,7 +301,7 @@ pub fn scan_query(
                     index: i,
                     expected: format_value,
                     actual: input_value,
-                    format_string: format
+                    format_string: format,
                 });
             }
             half = None;

@@ -1,15 +1,18 @@
 use crate::netmd::mappings::{ALLOWED_HW_KANA, MAPPINGS_DE, MAPPINGS_HW, MAPPINGS_JP, MAPPINGS_RU};
+use byteorder::{LittleEndian, WriteBytesExt};
 use diacritics;
 use encoding_rs::SHIFT_JIS;
 use regex::Regex;
 use std::{error::Error, io::Write, time::Duration, vec::IntoIter};
 use unicode_normalization::UnicodeNormalization;
-use byteorder::{LittleEndian, WriteBytesExt};
 
 extern crate kana;
 use kana::*;
 
-use super::{interface::DiscFormat, mappings::{HW_TO_FW_RANGE_MAP, MULTI_BYTE_CHARS}};
+use super::{
+    interface::DiscFormat,
+    mappings::{HW_TO_FW_RANGE_MAP, MULTI_BYTE_CHARS},
+};
 
 /// Sleep for a specified [Duration] on any platform
 pub async fn cross_sleep(duration: Duration) {
@@ -87,9 +90,11 @@ fn check(string: String) -> Option<String> {
 }
 
 pub fn half_width_title_length(title: &str) -> usize {
-    let multibyte_len = title.chars()
+    let multibyte_len = title
+        .chars()
         .map(|c| (*MULTI_BYTE_CHARS.get(&c).unwrap_or(&0) as usize))
-        .reduce(|a, b| a + b).unwrap_or_default();
+        .reduce(|a, b| a + b)
+        .unwrap_or_default();
 
     title.len() + multibyte_len
 }
@@ -174,7 +179,7 @@ pub struct AeaOptions<'a> {
     pub flags: &'a [u8],
 }
 
-impl <'a> Default for AeaOptions<'a> {
+impl<'a> Default for AeaOptions<'a> {
     fn default() -> Self {
         Self {
             name: "",
@@ -182,7 +187,7 @@ impl <'a> Default for AeaOptions<'a> {
             sound_groups: 1,
             group_start: 0,
             encrypted: 0,
-            flags: &[0, 0, 0, 0, 0, 0, 0, 0]
+            flags: &[0, 0, 0, 0, 0, 0, 0, 0],
         }
     }
 }
@@ -194,24 +199,48 @@ pub fn create_aea_header(options: AeaOptions) -> Vec<u8> {
 
     header.write_u32::<LittleEndian>(2048).unwrap();
     header.write_all(encoded_name).unwrap();
-    header.write_all(&vec![0; 256 - encoded_name.len()]).unwrap();
-    header.write_u32::<LittleEndian>(options.sound_groups as u32).unwrap();
+    header
+        .write_all(&vec![0; 256 - encoded_name.len()])
+        .unwrap();
+    header
+        .write_u32::<LittleEndian>(options.sound_groups as u32)
+        .unwrap();
     header.write_all(&[options.channels as u8, 0]).unwrap();
 
     // Write the flags
-    header.write_u32::<LittleEndian>(options.flags[0] as u32).unwrap();
-    header.write_u32::<LittleEndian>(options.flags[1] as u32).unwrap();
-    header.write_u32::<LittleEndian>(options.flags[2] as u32).unwrap();
-    header.write_u32::<LittleEndian>(options.flags[3] as u32).unwrap();
-    header.write_u32::<LittleEndian>(options.flags[4] as u32).unwrap();
-    header.write_u32::<LittleEndian>(options.flags[5] as u32).unwrap();
-    header.write_u32::<LittleEndian>(options.flags[6] as u32).unwrap();
-    header.write_u32::<LittleEndian>(options.flags[7] as u32).unwrap();
+    header
+        .write_u32::<LittleEndian>(options.flags[0] as u32)
+        .unwrap();
+    header
+        .write_u32::<LittleEndian>(options.flags[1] as u32)
+        .unwrap();
+    header
+        .write_u32::<LittleEndian>(options.flags[2] as u32)
+        .unwrap();
+    header
+        .write_u32::<LittleEndian>(options.flags[3] as u32)
+        .unwrap();
+    header
+        .write_u32::<LittleEndian>(options.flags[4] as u32)
+        .unwrap();
+    header
+        .write_u32::<LittleEndian>(options.flags[5] as u32)
+        .unwrap();
+    header
+        .write_u32::<LittleEndian>(options.flags[6] as u32)
+        .unwrap();
+    header
+        .write_u32::<LittleEndian>(options.flags[7] as u32)
+        .unwrap();
 
     header.write_u32::<LittleEndian>(0).unwrap();
 
-    header.write_u32::<LittleEndian>(options.encrypted as u32).unwrap();
-    header.write_u32::<LittleEndian>(options.group_start as u32).unwrap();
+    header
+        .write_u32::<LittleEndian>(options.encrypted as u32)
+        .unwrap();
+    header
+        .write_u32::<LittleEndian>(options.group_start as u32)
+        .unwrap();
 
     // return the header
     header
@@ -223,7 +252,7 @@ pub fn create_wav_header(format: DiscFormat, bytes: u32) -> Vec<u8> {
     let (joint_stereo, bytes_per_frame) = match format {
         DiscFormat::LP4 => (192, 0),
         DiscFormat::LP2 => (96, 1),
-        _ => unreachable!("Cannot create WAV header for disc type {:?}", format)
+        _ => unreachable!("Cannot create WAV header for disc type {:?}", format),
     };
 
     let bytes_per_second = (bytes_per_frame * 44100) / 512;
@@ -236,7 +265,9 @@ pub fn create_wav_header(format: DiscFormat, bytes: u32) -> Vec<u8> {
     header.write_u16::<LittleEndian>(2).unwrap(); // Stereo
     header.write_u32::<LittleEndian>(44100).unwrap();
     header.write_u32::<LittleEndian>(bytes_per_second).unwrap();
-    header.write_u16::<LittleEndian>(bytes_per_frame as u16 * 2).unwrap();
+    header
+        .write_u16::<LittleEndian>(bytes_per_frame as u16 * 2)
+        .unwrap();
 
     header.write_all(&[0, 0]).unwrap();
 
@@ -273,7 +304,10 @@ impl Into<Duration> for RawTime {
 impl RawTime {
     pub fn as_duration(&self) -> Duration {
         std::time::Duration::from_micros(
-            (self.hours * 3600000000) + (self.minutes * 60000000) + (self.seconds * 1000000) + (self.frames * 11600),
+            (self.hours * 3600000000)
+                + (self.minutes * 60000000)
+                + (self.seconds * 1000000)
+                + (self.frames * 11600),
         )
     }
 
