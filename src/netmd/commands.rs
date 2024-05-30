@@ -419,7 +419,7 @@ impl NetMDContext {
             let new_fw_name_with_groups;
             if has_fw_groups {
                 if has_fw_groups_and_title {
-                    let re = Regex::new("/^０；.*?／／/").unwrap();
+                    let re = Regex::new(r"^０；.*?／／").unwrap();
                     new_fw_name_with_groups = re
                         .replace_all(
                             &old_raw_fw_name,
@@ -432,7 +432,7 @@ impl NetMDContext {
                         .into()
                 } else {
                     new_fw_name_with_groups =
-                        format!(r"０；{}／／{}", new_fw_name.unwrap(), old_raw_fw_name);
+                        format!("０；{}／／{}", new_fw_name.unwrap(), old_raw_fw_name);
                 }
             } else {
                 new_fw_name_with_groups = new_fw_name.unwrap();
@@ -450,7 +450,7 @@ impl NetMDContext {
         let new_name_with_groups;
         if has_groups {
             if has_groups_and_title {
-                let re = Regex::new(r"/^0;.*?\/\//").unwrap();
+                let re = Regex::new(r"^0;.*?\/\/").unwrap();
                 new_name_with_groups = re
                     .replace_all(
                         &old_raw_name,
