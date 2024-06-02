@@ -53,8 +53,8 @@ impl WireFormat {
     const fn frame_size(&self) -> u16 {
         match self {
             WireFormat::Pcm => 2048,
-            WireFormat::L105kbps => 192,
-            WireFormat::LP2 => 152,
+            WireFormat::L105kbps => 152,
+            WireFormat::LP2 => 192,
             WireFormat::LP4 => 96,
         }
     }
@@ -1086,8 +1086,10 @@ impl NetMDInterface {
     pub async fn track_title(&mut self, track: u16, wchar: bool) -> Result<String, InterfaceError> {
         let title = match self.track_titles([track].into(), wchar).await {
             Ok(titles) => titles[0].clone(),
-            Err(error) if error.to_string() == "Rejected" => String::new(),
-            Err(error) => return Err(error),
+            Err(error) => match error {
+                InterfaceError::Rejected(_) => String::new(),
+                _ => return Err(error),
+            },
         };
         Ok(title)
     }
@@ -1180,8 +1182,10 @@ impl NetMDInterface {
                 }
                 length_after_encoding_to_sjis(&current_title) as u16
             }
-            Err(error) if error.to_string() == "Rejected" => 0,
-            Err(error) => return Err(error),
+            Err(error) => match error {
+                InterfaceError::Rejected(_) => 0,
+                _ => return Err(error),
+            },
         };
 
         self.change_descriptor_state(&descriptor, &DescriptorAction::OpenWrite)
