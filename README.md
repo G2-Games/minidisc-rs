@@ -9,11 +9,6 @@ The feature set is very similar to that of [netmd-js](https://github.com/cyberca
 > [!IMPORTANT]
 > Documentation has not been finished and is a work in progress. Any help with it would be appreciated!
 
-## Usage
-```rust
-
-```
-
 ## Current Features
 ### NetMD
 - [x] Track upload
