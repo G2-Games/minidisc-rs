@@ -27,6 +27,9 @@ targets = [
 [lib]
 crate-type = ["cdylib", "rlib"]
 
+[dev-dependencies]
+tokio-test = "0.4.3"
+
 [dependencies]
 diacritics = "0.2.0"
 encoding_rs = "0.8.33"
