@@ -14,238 +14,56 @@ use super::utils::cross_sleep;
 const BULK_WRITE_ENDPOINT: u8 = 0x02;
 const BULK_READ_ENDPOINT: u8 = 0x81;
 
+nofmt::pls! { // Skip formatting the following info
 pub static DEVICE_IDS: &[DeviceId] = &[
-    DeviceId {
-        vendor_id: 0x04dd,
-        product_id: 0x7202,
-        name: Some("Sharp IM-MT899H"),
-    },
-    DeviceId {
-        vendor_id: 0x04dd,
-        product_id: 0x9013,
-        name: Some("Sharp IM-DR400"),
-    },
-    DeviceId {
-        vendor_id: 0x04dd,
-        product_id: 0x9014,
-        name: Some("Sharp IM-DR80"),
-    },
-    DeviceId {
-        vendor_id: 0x054c,
-        product_id: 0x0034,
-        name: Some("Sony PCLK-XX"),
-    },
-    DeviceId {
-        vendor_id: 0x054c,
-        product_id: 0x0036,
-        name: Some("Sony"),
-    },
-    DeviceId {
-        vendor_id: 0x054c,
-        product_id: 0x0075,
-        name: Some("Sony MZ-N1"),
-    },
-    DeviceId {
-        vendor_id: 0x054c,
-        product_id: 0x007c,
-        name: Some("Sony"),
-    },
-    DeviceId {
-        vendor_id: 0x054c,
-        product_id: 0x0080,
-        name: Some("Sony LAM-1"),
-    },
-    DeviceId {
-        vendor_id: 0x054c,
-        product_id: 0x0081,
-        name: Some("Sony MDS-JB980/MDS-NT1/MDS-JE780"),
-    },
-    DeviceId {
-        vendor_id: 0x054c,
-        product_id: 0x0084,
-        name: Some("Sony MZ-N505"),
-    },
-    DeviceId {
-        vendor_id: 0x054c,
-        product_id: 0x0085,
-        name: Some("Sony MZ-S1"),
-    },
-    DeviceId {
-        vendor_id: 0x054c,
-        product_id: 0x0086,
-        name: Some("Sony MZ-N707"),
-    },
-    DeviceId {
-        vendor_id: 0x054c,
-        product_id: 0x008e,
-        name: Some("Sony CMT-C7NT"),
-    },
-    DeviceId {
-        vendor_id: 0x054c,
-        product_id: 0x0097,
-        name: Some("Sony PCGA-MDN1"),
-    },
-    DeviceId {
-        vendor_id: 0x054c,
-        product_id: 0x00ad,
-        name: Some("Sony CMT-L7HD"),
-    },
-    DeviceId {
-        vendor_id: 0x054c,
-        product_id: 0x00c6,
-        name: Some("Sony MZ-N10"),
-    },
-    DeviceId {
-        vendor_id: 0x054c,
-        product_id: 0x00c7,
-        name: Some("Sony MZ-N910"),
-    },
-    DeviceId {
-        vendor_id: 0x054c,
-        product_id: 0x00c8,
-        name: Some("Sony MZ-N710/NF810"),
-    },
-    DeviceId {
-        vendor_id: 0x054c,
-        product_id: 0x00c9,
-        name: Some("Sony MZ-N510/N610"),
-    },
-    DeviceId {
-        vendor_id: 0x054c,
-        product_id: 0x00ca,
-        name: Some("Sony MZ-NE410/NF520D"),
-    },
-    DeviceId {
-        vendor_id: 0x054c,
-        product_id: 0x00e7,
-        name: Some("Sony CMT-M333NT/M373NT"),
-    },
-    DeviceId {
-        vendor_id: 0x054c,
-        product_id: 0x00eb,
-        name: Some("Sony MZ-NE810/NE910"),
-    },
-    DeviceId {
-        vendor_id: 0x054c,
-        product_id: 0x0101,
-        name: Some("Sony LAM"),
-    },
-    DeviceId {
-        vendor_id: 0x054c,
-        product_id: 0x0113,
-        name: Some("Aiwa AM-NX1"),
-    },
-    DeviceId {
-        vendor_id: 0x054c,
-        product_id: 0x013f,
-        name: Some("Sony MDS-S500"),
-    },
-    DeviceId {
-        vendor_id: 0x054c,
-        product_id: 0x014c,
-        name: Some("Aiwa AM-NX9"),
-    },
-    DeviceId {
-        vendor_id: 0x054c,
-        product_id: 0x017e,
-        name: Some("Sony MZ-NH1"),
-    },
-    DeviceId {
-        vendor_id: 0x054c,
-        product_id: 0x0180,
-        name: Some("Sony MZ-NH3D"),
-    },
-    DeviceId {
-        vendor_id: 0x054c,
-        product_id: 0x0182,
-        name: Some("Sony MZ-NH900"),
-    },
-    DeviceId {
-        vendor_id: 0x054c,
-        product_id: 0x0184,
-        name: Some("Sony MZ-NH700/NH800"),
-    },
-    DeviceId {
-        vendor_id: 0x054c,
-        product_id: 0x0186,
-        name: Some("Sony MZ-NH600"),
-    },
-    DeviceId {
-        vendor_id: 0x054c,
-        product_id: 0x0187,
-        name: Some("Sony MZ-NH600D"),
-    },
-    DeviceId {
-        vendor_id: 0x054c,
-        product_id: 0x0188,
-        name: Some("Sony MZ-N920"),
-    },
-    DeviceId {
-        vendor_id: 0x054c,
-        product_id: 0x018a,
-        name: Some("Sony LAM-3"),
-    },
-    DeviceId {
-        vendor_id: 0x054c,
-        product_id: 0x01e9,
-        name: Some("Sony MZ-DH10P"),
-    },
-    DeviceId {
-        vendor_id: 0x054c,
-        product_id: 0x0219,
-        name: Some("Sony MZ-RH10"),
-    },
-    DeviceId {
-        vendor_id: 0x054c,
-        product_id: 0x021b,
-        name: Some("Sony MZ-RH710/MZ-RH910"),
-    },
-    DeviceId {
-        vendor_id: 0x054c,
-        product_id: 0x021d,
-        name: Some("Sony CMT-AH10"),
-    },
-    DeviceId {
-        vendor_id: 0x054c,
-        product_id: 0x022c,
-        name: Some("Sony CMT-AH10"),
-    },
-    DeviceId {
-        vendor_id: 0x054c,
-        product_id: 0x023c,
-        name: Some("Sony DS-HMD1"),
-    },
-    DeviceId {
-        vendor_id: 0x054c,
-        product_id: 0x0286,
-        name: Some("Sony MZ-RH1"),
-    },
-    DeviceId {
-        vendor_id: 0x054c,
-        product_id: 0x011a,
-        name: Some("Sony CMT-SE7"),
-    },
-    DeviceId {
-        vendor_id: 0x054c,
-        product_id: 0x0148,
-        name: Some("Sony MDS-A1"),
-    },
-    DeviceId {
-        vendor_id: 0x0b28,
-        product_id: 0x1004,
-        name: Some("Kenwood MDX-J9"),
-    },
-    DeviceId {
-        vendor_id: 0x04da,
-        product_id: 0x23b3,
-        name: Some("Panasonic SJ-MR250"),
-    },
-    DeviceId {
-        vendor_id: 0x04da,
-        product_id: 0x23b6,
-        name: Some("Panasonic SJ-MR270"),
-    },
+    DeviceId { vendor_id: 0x04dd, product_id: 0x7202, name: Some("Sharp IM-MT899H") },
+    DeviceId { vendor_id: 0x04dd, product_id: 0x9013, name: Some("Sharp IM-DR400") },
+    DeviceId { vendor_id: 0x04dd, product_id: 0x9014, name: Some("Sharp IM-DR80") },
+    DeviceId { vendor_id: 0x054c, product_id: 0x0034, name: Some("Sony PCLK-XX") },
+    DeviceId { vendor_id: 0x054c, product_id: 0x0036, name: Some("Sony") },
+    DeviceId { vendor_id: 0x054c, product_id: 0x0075, name: Some("Sony MZ-N1") },
+    DeviceId { vendor_id: 0x054c, product_id: 0x007c, name: Some("Sony") },
+    DeviceId { vendor_id: 0x054c, product_id: 0x0080, name: Some("Sony LAM-1") },
+    DeviceId { vendor_id: 0x054c, product_id: 0x0081, name: Some("Sony MDS-JB980/MDS-NT1/MDS-JE780") },
+    DeviceId { vendor_id: 0x054c, product_id: 0x0084, name: Some("Sony MZ-N505") },
+    DeviceId { vendor_id: 0x054c, product_id: 0x0085, name: Some("Sony MZ-S1") },
+    DeviceId { vendor_id: 0x054c, product_id: 0x0086, name: Some("Sony MZ-N707") },
+    DeviceId { vendor_id: 0x054c, product_id: 0x008e, name: Some("Sony CMT-C7NT") },
+    DeviceId { vendor_id: 0x054c, product_id: 0x0097, name: Some("Sony PCGA-MDN1") },
+    DeviceId { vendor_id: 0x054c, product_id: 0x00ad, name: Some("Sony CMT-L7HD") },
+    DeviceId { vendor_id: 0x054c, product_id: 0x00c6, name: Some("Sony MZ-N10") },
+    DeviceId { vendor_id: 0x054c, product_id: 0x00c7, name: Some("Sony MZ-N910") },
+    DeviceId { vendor_id: 0x054c, product_id: 0x00c8, name: Some("Sony MZ-N710/NF810") },
+    DeviceId { vendor_id: 0x054c, product_id: 0x00c9, name: Some("Sony MZ-N510/N610") },
+    DeviceId { vendor_id: 0x054c, product_id: 0x00ca, name: Some("Sony MZ-NE410/NF520D") },
+    DeviceId { vendor_id: 0x054c, product_id: 0x00e7, name: Some("Sony CMT-M333NT/M373NT") },
+    DeviceId { vendor_id: 0x054c, product_id: 0x00eb, name: Some("Sony MZ-NE810/NE910") },
+    DeviceId { vendor_id: 0x054c, product_id: 0x0101, name: Some("Sony LAM") },
+    DeviceId { vendor_id: 0x054c, product_id: 0x0113, name: Some("Aiwa AM-NX1") },
+    DeviceId { vendor_id: 0x054c, product_id: 0x013f, name: Some("Sony MDS-S500") },
+    DeviceId { vendor_id: 0x054c, product_id: 0x014c, name: Some("Aiwa AM-NX9") },
+    DeviceId { vendor_id: 0x054c, product_id: 0x017e, name: Some("Sony MZ-NH1") },
+    DeviceId { vendor_id: 0x054c, product_id: 0x0180, name: Some("Sony MZ-NH3D") },
+    DeviceId { vendor_id: 0x054c, product_id: 0x0182, name: Some("Sony MZ-NH900") },
+    DeviceId { vendor_id: 0x054c, product_id: 0x0184, name: Some("Sony MZ-NH700/NH800") },
+    DeviceId { vendor_id: 0x054c, product_id: 0x0186, name: Some("Sony MZ-NH600") },
+    DeviceId { vendor_id: 0x054c, product_id: 0x0187, name: Some("Sony MZ-NH600D") },
+    DeviceId { vendor_id: 0x054c, product_id: 0x0188, name: Some("Sony MZ-N920") },
+    DeviceId { vendor_id: 0x054c, product_id: 0x018a, name: Some("Sony LAM-3") },
+    DeviceId { vendor_id: 0x054c, product_id: 0x01e9, name: Some("Sony MZ-DH10P") },
+    DeviceId { vendor_id: 0x054c, product_id: 0x0219, name: Some("Sony MZ-RH10") },
+    DeviceId { vendor_id: 0x054c, product_id: 0x021b, name: Some("Sony MZ-RH710/MZ-RH910") },
+    DeviceId { vendor_id: 0x054c, product_id: 0x021d, name: Some("Sony CMT-AH10") },
+    DeviceId { vendor_id: 0x054c, product_id: 0x022c, name: Some("Sony CMT-AH10") },
+    DeviceId { vendor_id: 0x054c, product_id: 0x023c, name: Some("Sony DS-HMD1") },
+    DeviceId { vendor_id: 0x054c, product_id: 0x0286, name: Some("Sony MZ-RH1") },
+    DeviceId { vendor_id: 0x054c, product_id: 0x011a, name: Some("Sony CMT-SE7") },
+    DeviceId { vendor_id: 0x054c, product_id: 0x0148, name: Some("Sony MDS-A1") },
+    DeviceId { vendor_id: 0x0b28, product_id: 0x1004, name: Some("Kenwood MDX-J9") },
+    DeviceId { vendor_id: 0x04da, product_id: 0x23b3, name: Some("Panasonic SJ-MR250") },
+    DeviceId { vendor_id: 0x04da, product_id: 0x23b6, name: Some("Panasonic SJ-MR270") },
 ];
+}
 
 pub static DEVICE_IDS_CROSSUSB: Lazy<Box<[cross_usb::DeviceFilter]>> = Lazy::new(|| {
     DEVICE_IDS

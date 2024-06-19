@@ -409,8 +409,8 @@ impl NetMDContext {
         let old_raw_name = self.interface.raw_disc_title(false).await?;
         let old_raw_fw_name = self.interface.raw_disc_title(true).await?;
 
-        let has_groups = old_raw_name.find("//").is_some();
-        let has_fw_groups = old_raw_fw_name.find("／／").is_some();
+        let has_groups = old_raw_name.contains("//");
+        let has_fw_groups = old_raw_fw_name.contains("／／");
 
         let has_groups_and_title = old_raw_name.starts_with("0;");
         let has_fw_groups_and_title = old_raw_fw_name.starts_with("０；");
@@ -560,9 +560,7 @@ impl NetMDContext {
 
 impl From<NetMDInterface> for NetMDContext {
     fn from(value: NetMDInterface) -> Self {
-        Self {
-            interface: value
-        }
+        Self { interface: value }
     }
 }
 

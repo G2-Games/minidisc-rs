@@ -150,7 +150,7 @@ pub fn sanitize_full_width_title(title: &str) -> String {
 
 /// Convert a UTF-8 string to Shift-JIS for use on the player
 pub fn to_sjis(sjis_str: &str) -> Vec<u8> {
-    let sjis_string = SHIFT_JIS.encode(&sjis_str).0;
+    let sjis_string = SHIFT_JIS.encode(sjis_str).0;
 
     if validate_sjis(sjis_string.clone().into()) {
         return agressive_sanitize_title(sjis_str).into();
@@ -203,7 +203,7 @@ pub fn create_aea_header(options: AeaOptions) -> Vec<u8> {
         .write_all(&vec![0; 256 - encoded_name.len()])
         .unwrap();
     header
-        .write_u32::<LittleEndian>(options.sound_groups as u32)
+        .write_u32::<LittleEndian>(options.sound_groups)
         .unwrap();
     header.write_all(&[options.channels as u8, 0]).unwrap();
 
@@ -235,11 +235,9 @@ pub fn create_aea_header(options: AeaOptions) -> Vec<u8> {
 
     header.write_u32::<LittleEndian>(0).unwrap();
 
+    header.write_u32::<LittleEndian>(options.encrypted).unwrap();
     header
-        .write_u32::<LittleEndian>(options.encrypted as u32)
-        .unwrap();
-    header
-        .write_u32::<LittleEndian>(options.group_start as u32)
+        .write_u32::<LittleEndian>(options.group_start)
         .unwrap();
 
     // return the header
@@ -295,9 +293,9 @@ pub struct RawTime {
     pub frames: u64,
 }
 
-impl Into<Duration> for RawTime {
-    fn into(self) -> std::time::Duration {
-        self.as_duration()
+impl From<RawTime> for Duration {
+    fn from(val: RawTime) -> Self {
+        val.as_duration()
     }
 }
 

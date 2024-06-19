@@ -53,8 +53,8 @@ impl WireFormat {
     const fn frame_size(&self) -> u16 {
         match self {
             WireFormat::Pcm => 2048,
-            WireFormat::L105kbps => 152,
             WireFormat::LP2 => 192,
+            WireFormat::L105kbps => 152,
             WireFormat::LP4 => 96,
         }
     }
