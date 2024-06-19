@@ -76,12 +76,12 @@ pub enum Encoding {
     LP4 = 0x93,
 }
 
-impl ToString for Encoding {
-    fn to_string(&self) -> String {
+impl std::fmt::Display for Encoding {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Encoding::SP => String::from("sp"),
-            Encoding::LP2 => String::from("lp2"),
-            Encoding::LP4 => String::from("lp4"),
+            Encoding::SP => write!(f, "sp"),
+            Encoding::LP2 => write!(f, "lp2"),
+            Encoding::LP4 => write!(f, "lp4"),
         }
     }
 }
@@ -92,11 +92,11 @@ pub enum Channels {
     Stereo = 0x00,
 }
 
-impl ToString for Channels {
-    fn to_string(&self) -> String {
+impl std::fmt::Display for Channels {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Channels::Mono => String::from("mono"),
-            Channels::Stereo => String::from("stereo"),
+            Channels::Mono => write!(f, "mono"),
+            Channels::Stereo => write!(f, "stereo"),
         }
     }
 }
@@ -112,11 +112,11 @@ pub enum TrackFlag {
     Unprotected = 0x00,
 }
 
-impl ToString for TrackFlag {
-    fn to_string(&self) -> String {
+impl std::fmt::Display for TrackFlag {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            TrackFlag::Protected => String::from("protected"),
-            TrackFlag::Unprotected => String::from("unprotected"),
+            TrackFlag::Protected => write!(f, "protected"),
+            TrackFlag::Unprotected => write!(f, "unprotected"),
         }
     }
 }

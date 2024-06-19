@@ -15,6 +15,7 @@ const BULK_WRITE_ENDPOINT: u8 = 0x02;
 const BULK_READ_ENDPOINT: u8 = 0x81;
 
 nofmt::pls! { // Skip formatting the following info
+/// Device IDs for use in matching existing devices
 pub static DEVICE_IDS: &[DeviceId] = &[
     DeviceId { vendor_id: 0x04dd, product_id: 0x7202, name: Some("Sharp IM-MT899H") },
     DeviceId { vendor_id: 0x04dd, product_id: 0x9013, name: Some("Sharp IM-DR400") },
@@ -65,6 +66,7 @@ pub static DEVICE_IDS: &[DeviceId] = &[
 ];
 }
 
+/// Device IDs for use with [cross_usb]
 pub static DEVICE_IDS_CROSSUSB: Lazy<Box<[cross_usb::DeviceFilter]>> = Lazy::new(|| {
     DEVICE_IDS
         .iter()
@@ -136,7 +138,7 @@ impl NetMD {
             if device_type.vendor_id == model.vendor_id
                 && device_type.product_id == model.product_id
             {
-                model.name = device_type.name.clone();
+                model.name = device_type.name;
                 break;
             }
         }

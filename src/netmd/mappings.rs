@@ -1,6 +1,7 @@
 use phf::phf_map;
 
-pub static MAPPINGS_JP: phf::Map<&'static str, &'static str> = phf_map![
+/// Mappings to convert to fullwidth from half width
+pub static MAPPINGS_JP: phf::Map<&str, &str> = phf_map![
     "!" =>"！",
     "\"" =>"＂",
     "#" =>"＃",
@@ -191,7 +192,9 @@ pub static MAPPINGS_JP: phf::Map<&'static str, &'static str> = phf_map![
     "｡" =>"。",
     "､" =>"、"
 ];
-pub static MAPPINGS_RU: phf::Map<&'static str, &'static str> = phf_map![
+
+/// Mappings to romanize Russian
+pub static MAPPINGS_RU: phf::Map<&str, &str> = phf_map![
     "а" =>"a",
     "б" =>"b",
     "в" =>"v",
@@ -259,7 +262,9 @@ pub static MAPPINGS_RU: phf::Map<&'static str, &'static str> = phf_map![
     "Ю" =>"Iu",
     "Я" =>"Ia"
 ];
-pub static MAPPINGS_DE: phf::Map<&'static str, &'static str> = phf_map![
+
+/// Mappings to remove accents for German
+pub static MAPPINGS_DE: phf::Map<&str, &str> = phf_map![
     "Ä" => "Ae",
     "ä" => "ae",
     "Ö" => "Oe",
@@ -268,7 +273,9 @@ pub static MAPPINGS_DE: phf::Map<&'static str, &'static str> = phf_map![
     "ü" => "ue",
     "ß" => "ss"
 ];
-pub static MAPPINGS_HW: phf::Map<&'static str, &'static str> = phf_map![
+
+/// Mappings to make Japanese half width
+pub static MAPPINGS_HW: phf::Map<&str, &str> = phf_map![
     "－" =>"-",
     "ｰ" =>"-",
     "ァ" =>"ｧ",
@@ -548,7 +555,9 @@ pub static MAPPINGS_HW: phf::Map<&'static str, &'static str> = phf_map![
     "ゝ" =>"ヽ",
     "ゞ" =>"ヾ",
 ];
-pub static ALLOWED_HW_KANA: &[&'static str] = &[
+
+/// A list of allowed half width kana
+pub static ALLOWED_HW_KANA: &[&str] = &[
     "-", "-", "ｧ", "ｱ", "ｨ", "ｲ", "ｩ", "ｳ", "ｪ", "ｴ", "ｫ", "ｵ", "ｶ", "ｶﾞ", "ｷ", "ｷﾞ", "ｸ", "ｸﾞ",
     "ｹ", "ｹﾞ", "ｺ", "ｺﾞ", "ｻ", "ｻﾞ", "ｼ", "ｼﾞ", "ｽ", "ｽﾞ", "ｾ", "ｾﾞ", "ｿ", "ｿﾞ", "ﾀ", "ﾀﾞ", "ﾁ",
     "ﾁﾞ", "ｯ", "ﾂ", "ﾂﾞ", "ﾃ", "ﾃﾞ", "ﾄ", "ﾄﾞ", "ﾅ", "ﾆ", "ﾇ", "ﾈ", "ﾉ", "ﾊ", "ﾊﾞ", "ﾊﾟ", "ﾋ",
@@ -566,6 +575,8 @@ pub static ALLOWED_HW_KANA: &[&'static str] = &[
     "ﾏ", "ﾐ", "ﾑ", "ﾒ", "ﾓ", "ｬ", "ﾔ", "ｭ", "ﾕ", "ｮ", "ﾖ", "ﾗ", "ﾘ", "ﾙ", "ﾚ", "ﾛ", "ﾜ", "ｦ", "ﾝ",
     "ヮ", "ヰ", "ヱ", "ヵ", "ヶ", "ｳﾞ", "ヽ", "ヾ",
 ];
+
+/// Characters which take up more than one byte
 pub static MULTI_BYTE_CHARS: phf::Map<char, u8> = phf_map![
     'ガ' => 1,
     'ギ' => 1,
@@ -634,6 +645,8 @@ pub static MULTI_BYTE_CHARS: phf::Map<char, u8> = phf_map![
     'ゝ' => 1,
     'ゞ' => 1
 ];
+
+/// Half width to full width conversion for group ranges
 pub static HW_TO_FW_RANGE_MAP: phf::Map<char, char> = phf_map![
     '0' => '０',
     '1' => '１',

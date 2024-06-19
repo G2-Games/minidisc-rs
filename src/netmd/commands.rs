@@ -398,11 +398,7 @@ impl NetMDContext {
         new_fw_name: Option<&str>,
     ) -> Result<(), Box<dyn Error>> {
         let new_name = sanitize_half_width_title(new_name);
-        let new_fw_name = if let Some(name) = new_fw_name {
-            Some(sanitize_full_width_title(name))
-        } else {
-            None
-        };
+        let new_fw_name = new_fw_name.map(sanitize_full_width_title);
 
         let old_name = self.interface.disc_title(false).await?;
         let old_fw_name = self.interface.disc_title(true).await?;
