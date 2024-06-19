@@ -1,8 +1,5 @@
-/*!
- * This crate is an interface in rust to control NetMD and Hi-MD minidisc devices.
- *
- * Documentation coming soon
- */
+//! This module contains all functionality for interacting with NetMD minidisc
+//! devices.
 
 pub mod base;
 pub mod commands;

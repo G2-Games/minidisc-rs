@@ -18,6 +18,7 @@ use super::utils::{
     sanitize_full_width_title, sanitize_half_width_title,
 };
 
+/// The current reported status from the device.
 #[derive(Debug, Clone, Copy, FromPrimitive, PartialEq, Eq)]
 pub enum OperatingStatus {
     Ready = 50687,
@@ -31,6 +32,7 @@ pub enum OperatingStatus {
     ReadyForTransfer = 65319,
 }
 
+/// A representation of time in the same way NetMD devices do.
 #[derive(Debug, Clone)]
 pub struct Time {
     pub minute: u16,
@@ -38,6 +40,7 @@ pub struct Time {
     pub frame: u16,
 }
 
+/// A representation of the current status of the device.
 #[derive(Debug, Clone)]
 pub struct DeviceStatus {
     pub disc_present: bool,
@@ -46,6 +49,7 @@ pub struct DeviceStatus {
     pub time: Time,
 }
 
+/// Information about a single track
 #[derive(Debug, Clone)]
 pub struct Track {
     index: u16,
@@ -58,6 +62,7 @@ pub struct Track {
 }
 
 impl Track {
+    /// Get the number of title cells a title will take up.
     pub fn cells_for_title(&self) -> (usize, usize) {
         let encoding_name_correction = match self.encoding {
             Encoding::SP => 0,
@@ -74,6 +79,7 @@ impl Track {
     }
 }
 
+/// Information about a single group on the disc, containing [`Track`]s
 #[derive(Debug, Clone)]
 pub struct Group {
     index: u16,
@@ -82,6 +88,7 @@ pub struct Group {
     tracks: Vec<Track>,
 }
 
+/// Information about a MiniDisc complete with [`Track`]s, [`Group`]s, and metadata.
 #[derive(Debug, Clone)]
 pub struct Disc {
     title: String,
@@ -260,6 +267,11 @@ impl Disc {
     }
 }
 
+/// Context for interacting with a NetMD device as a wrapper around a [`NetMDInterface`].
+///
+/// This struct wraps a [`NetMDInterface`] and allows for some higher level
+/// functions, but it is still necessary to interact with the [`NetMDInterface`]
+/// when performing many operations.
 pub struct NetMDContext {
     interface: NetMDInterface,
 }
@@ -287,6 +299,7 @@ impl NetMDContext {
         self.interface.track_change(Direction::Restart).await
     }
 
+    /// Get the current status of the device
     pub async fn device_status(&mut self) -> Result<DeviceStatus, Box<dyn Error>> {
         let status = self.interface.status().await?;
         let playback_status = self.interface.playback_status2().await?;
@@ -317,6 +330,7 @@ impl NetMDContext {
         })
     }
 
+    /// Get a representation of the current disc inserted in the device.
     pub async fn list_content(&mut self) -> Result<Disc, Box<dyn Error>> {
         let flags = self.interface.disc_flags().await?;
         let title = self.interface.disc_title(false).await?;
@@ -392,6 +406,7 @@ impl NetMDContext {
         Ok(())
     }
 
+    /// Rename a disc while preserving group titles
     pub async fn rename_disc(
         &mut self,
         new_name: &str,
@@ -471,6 +486,7 @@ impl NetMDContext {
         Ok(())
     }
 
+    /// Get a track from the device. This only works with MZ-RH1 devices.
     pub async fn upload<F: Fn(usize, usize)>(
         &mut self,
         track: u16,
@@ -524,6 +540,9 @@ impl NetMDContext {
         Ok(())
     }
 
+    /// Start downloading an [`MDTrack`] to the device.
+    ///
+    /// Progress is updated in the `progress_callback` closure.
     pub async fn download<F>(
         &mut self,
         track: MDTrack,
@@ -545,16 +564,22 @@ impl NetMDContext {
         Ok(result)
     }
 
+    /// Get a reference to the underlying interface.
+    ///
+    /// [`NetMDContext::interface_mut()`] is almost certainly more useful
+    /// in most cases.
     pub fn interface(&self) -> &NetMDInterface {
         &self.interface
     }
 
+    /// Get a mutable reference to the underlying interface.
     pub fn interface_mut(&mut self) -> &mut NetMDInterface {
         &mut self.interface
     }
 }
 
 impl From<NetMDInterface> for NetMDContext {
+    /// Create a context from an already opened interface.
     fn from(value: NetMDInterface) -> Self {
         Self { interface: value }
     }

@@ -1705,7 +1705,7 @@ impl NetMDInterface {
         // Sharps are slow
         cross_sleep(Duration::from_millis(200)).await;
 
-        let mut _written_bytes = 0;
+        let mut written_bytes = 0;
         let mut packet_count = 0;
 
         while let Some((key, iv, data)) = packets.recv().await {
@@ -1716,10 +1716,10 @@ impl NetMDInterface {
                 data
             };
             self.device.write_bulk(&binpack).await?;
-            _written_bytes += binpack.len();
+            written_bytes += binpack.len();
             packet_count += 1;
-            (progress_callback)(total_bytes, _written_bytes);
-            if total_bytes == _written_bytes {
+            (progress_callback)(total_bytes, written_bytes);
+            if total_bytes == written_bytes {
                 packets.close();
                 break;
             }
