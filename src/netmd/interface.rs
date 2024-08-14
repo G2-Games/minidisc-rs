@@ -310,7 +310,7 @@ impl NetMDInterface {
     const INTERIM_RESPONSE_RETRY_INTERVAL: u32 = 100;
 
     /// Get a new interface to a NetMD device
-    pub async fn new(device: cross_usb::DeviceInfo) -> Result<Self, InterfaceError> {
+    pub async fn new(device: cross_usb::Descriptor) -> Result<Self, InterfaceError> {
         let device = base::NetMD::new(device).await?;
         Ok(NetMDInterface { device })
     }

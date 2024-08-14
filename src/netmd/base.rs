@@ -7,7 +7,7 @@ use thiserror::Error;
 // USB stuff
 use cross_usb::prelude::*;
 use cross_usb::usb::{ControlIn, ControlOut, ControlType, Recipient, UsbError};
-use cross_usb::{DeviceInfo, Interface};
+use cross_usb::{Descriptor, Interface};
 
 use super::utils::cross_sleep;
 
@@ -132,7 +132,7 @@ impl NetMD {
     const READ_REPLY_RETRY_INTERVAL: u32 = 10;
 
     /// Creates a new interface to a NetMD device
-    pub async fn new(usb_descriptor: DeviceInfo) -> Result<Self, NetMDError> {
+    pub async fn new(usb_descriptor: Descriptor) -> Result<Self, NetMDError> {
         let mut model = DeviceId {
             vendor_id: usb_descriptor.vendor_id().await,
             product_id: usb_descriptor.product_id().await,

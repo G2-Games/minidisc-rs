@@ -1,5 +1,5 @@
 #![cfg_attr(debug_assertions, allow(dead_code))]
-use cross_usb::DeviceInfo;
+use cross_usb::Descriptor;
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
 use regex::Regex;
@@ -278,7 +278,7 @@ pub struct NetMDContext {
 
 impl NetMDContext {
     /// Create a new context to control a NetMD device
-    pub async fn new(device: DeviceInfo) -> Result<Self, InterfaceError> {
+    pub async fn new(device: Descriptor) -> Result<Self, InterfaceError> {
         let interface = NetMDInterface::new(device).await?;
 
         Ok(Self { interface })
