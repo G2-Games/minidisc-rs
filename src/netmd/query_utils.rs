@@ -90,13 +90,16 @@ pub enum QueryError {
     #[error("unrecognized format character: `{0}`")]
     UnrecognizedChar(char),
 
-    #[error("Format and input mismatch at {index}: expected {expected:#04x}, got {actual:#04x} (format {format_string})")]
+    #[error("format and input mismatch at {index}: expected {expected:#04x}, got {actual:#04x} (format {format_string})")]
     InputMismatch {
         index: usize,
         expected: u8,
         actual: u8,
         format_string: String,
     },
+
+    #[error("input data is empty")]
+    EmptyData,
 }
 
 /// Formats a query using a standard input to send to the player
@@ -196,6 +199,14 @@ pub fn format_query(format: String, args: Vec<QueryValue>) -> Result<Vec<u8>, Qu
 
 /// Scans a result using a standard input to recieve from the player
 pub fn scan_query(query_result: Vec<u8>, format: String) -> Result<Vec<QueryValue>, QueryError> {
+    if DEBUG {
+        println!("RECV<<< F: {}", format);
+    }
+
+    if query_result.is_empty() {
+        return Err(QueryError::EmptyData)
+    }
+
     let mut result: Vec<QueryValue> = Vec::new();
 
     let initial_length = query_result.len();

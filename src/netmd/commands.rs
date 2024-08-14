@@ -1,5 +1,5 @@
 #![cfg_attr(debug_assertions, allow(dead_code))]
-use cross_usb::Descriptor;
+use cross_usb::DeviceInfo;
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
 use regex::Regex;
@@ -278,7 +278,7 @@ pub struct NetMDContext {
 
 impl NetMDContext {
     /// Create a new context to control a NetMD device
-    pub async fn new(device: Descriptor) -> Result<Self, InterfaceError> {
+    pub async fn new(device: DeviceInfo) -> Result<Self, InterfaceError> {
         let interface = NetMDInterface::new(device).await?;
 
         Ok(Self { interface })
@@ -520,7 +520,7 @@ impl NetMDContext {
         Ok((format, header))
     }
 
-    pub async fn prepare_download(&mut self) -> Result<(), Box<dyn Error>> {
+    async fn prepare_download(&mut self) -> Result<(), Box<dyn Error>> {
         while ![OperatingStatus::DiscBlank, OperatingStatus::Ready].contains(
             &self
                 .device_status()
@@ -543,13 +543,49 @@ impl NetMDContext {
     /// Start downloading an [`MDTrack`] to the device.
     ///
     /// Progress is updated in the `progress_callback` closure.
-    pub async fn download<F>(
+    ///
+    /// # Downloading a track:
+    /// ```no_run
+    /// # tokio_test::block_on(async {
+    /// use minidisc::netmd::DEVICE_IDS_CROSSUSB;
+    /// use minidisc::netmd::NetMDContext;
+    /// use minidisc::netmd::encryption::new_thread_encryptor;
+    /// use minidisc::netmd::interface::{MDTrack, NetMDInterface};
+    ///
+    /// // Get the minidisc device from cross_usb
+    /// let device = cross_usb::get_device(DEVICE_IDS_CROSSUSB.to_vec()).await.unwrap();
+    ///
+    /// // Obtain a NetMDContext and acquire it
+    /// let mut context = NetMDContext::new(device).await.unwrap();
+    /// context.interface_mut().acquire().await.unwrap();
+    ///
+    /// // Read in an audio file to a vec, for LP2 and LP4 this must be encoded properly
+    /// let track_contents: Vec<u8> =
+    ///     std::fs::read("audio_file.wav")
+    ///         .expect("Could not read track")[0x60..].to_vec();
+    ///
+    /// // Construct the track
+    /// let track = MDTrack {
+    ///     chunk_size: 0x400,
+    ///     title: String::from("My Track Title"),
+    ///     format: minidisc::netmd::interface::WireFormat::LP2,
+    ///     full_width_title: None,
+    ///     data: track_contents,
+    ///     encrypt_packets_iterator: Box::new(new_thread_encryptor),
+    /// };
+    ///
+    /// // Download it to the player!
+    /// context.download(
+    ///     track,
+    ///     |out_of: usize, done: usize| println!("Done {} / {}", done, out_of)
+    /// ).await.expect("Starting download failed");
+    /// # })
+    /// ```
+    pub async fn download<F: Fn(usize, usize)>(
         &mut self,
         track: MDTrack,
         progress_callback: F,
     ) -> Result<(u16, Vec<u8>, Vec<u8>), Box<dyn Error>>
-    where
-        F: Fn(usize, usize),
     {
         self.prepare_download().await?;
         // Lock the interface by providing it to the session

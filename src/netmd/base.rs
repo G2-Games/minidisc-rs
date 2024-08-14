@@ -7,7 +7,7 @@ use thiserror::Error;
 // USB stuff
 use cross_usb::prelude::*;
 use cross_usb::usb::{ControlIn, ControlOut, ControlType, Recipient, UsbError};
-use cross_usb::{Descriptor, Interface};
+use cross_usb::{DeviceInfo, Interface};
 
 use super::utils::cross_sleep;
 
@@ -117,7 +117,12 @@ pub enum NetMDError {
     UsbError(#[from] UsbError),
 }
 
-/// A USB connection to a NetMD device
+/// A low-level USB connection to a NetMD device.
+///
+/// With this you can send raw commands to the device and recieve raw data.
+///
+/// For simple communication with a NetMD device, you most likely want the
+/// higher level [`super::NetMDInterface`] or [`super::NetMDContext`] interfaces
 pub struct NetMD {
     usb_interface: Interface,
     model: DeviceId,
@@ -127,7 +132,7 @@ impl NetMD {
     const READ_REPLY_RETRY_INTERVAL: u32 = 10;
 
     /// Creates a new interface to a NetMD device
-    pub async fn new(usb_descriptor: Descriptor) -> Result<Self, NetMDError> {
+    pub async fn new(usb_descriptor: DeviceInfo) -> Result<Self, NetMDError> {
         let mut model = DeviceId {
             vendor_id: usb_descriptor.vendor_id().await,
             product_id: usb_descriptor.product_id().await,
@@ -202,15 +207,17 @@ impl NetMD {
         Ok((length_bytes, poll_result))
     }
 
+    /// Send a control message to the device (Raw bytes)
     pub async fn send_command(&mut self, command: Vec<u8>) -> Result<(), NetMDError> {
         self._send_command(command, false).await
     }
 
+    /// Send a factory control message to the device (Raw bytes)
     pub async fn send_factory_command(&mut self, command: Vec<u8>) -> Result<(), NetMDError> {
         self._send_command(command, true).await
     }
 
-    /// Send a control message to the device
+    /// Send a control message to the device, can also send factory commands
     async fn _send_command(
         &mut self,
         command: Vec<u8>,

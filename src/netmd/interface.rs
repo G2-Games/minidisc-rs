@@ -8,6 +8,7 @@ use crate::netmd::utils::{
 use cbc::cipher::block_padding::NoPadding;
 use cbc::cipher::{BlockDecryptMut, BlockEncryptMut, KeyInit, KeyIvInit};
 use encoding_rs::SHIFT_JIS;
+use log::debug;
 use num_derive::FromPrimitive;
 use rand::RngCore;
 use std::collections::HashMap;
@@ -19,6 +20,7 @@ use tokio::sync::mpsc::UnboundedReceiver;
 use super::base::NetMD;
 use super::utils::{cross_sleep, to_sjis};
 
+/// An action to take on the player
 #[derive(Copy, Clone)]
 enum Action {
     Play = 0x75,
@@ -27,12 +29,14 @@ enum Action {
     Rewind = 0x49,
 }
 
+/// Direction of playback, or restart track
 pub enum Direction {
     Previous = 0x0002,
     Next = 0x8001,
     Restart = 0x0001,
 }
 
+/// The format of the disc
 #[derive(Debug, Clone, Copy, FromPrimitive, PartialEq, Eq)]
 pub enum DiscFormat {
     LP4 = 0,
@@ -41,6 +45,7 @@ pub enum DiscFormat {
     SPStereo = 6,
 }
 
+/// The format of the audio
 #[derive(Clone, Hash, Eq, PartialEq, FromPrimitive)]
 pub enum WireFormat {
     Pcm = 0x00,
@@ -69,6 +74,7 @@ impl WireFormat {
     }
 }
 
+/// The encoding of the audio
 #[derive(Debug, Clone, Copy)]
 pub enum Encoding {
     SP = 0x90,
@@ -86,6 +92,7 @@ impl std::fmt::Display for Encoding {
     }
 }
 
+/// The number of channels in the audio
 #[derive(Debug, Clone, Copy)]
 pub enum Channels {
     Mono = 0x01,
@@ -106,6 +113,7 @@ enum ChannelCount {
     Stereo = 2,
 }
 
+/// The protected flag on a track
 #[derive(Debug, Clone, Copy, FromPrimitive)]
 pub enum TrackFlag {
     Protected = 0x03,
@@ -121,10 +129,12 @@ impl std::fmt::Display for TrackFlag {
     }
 }
 
+/// The write protect flag on a disc
 pub enum DiscFlag {
     Writable = 0x10,
     WriteProtected = 0x40,
 }
+
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 enum NetMDLevel {
@@ -180,6 +190,7 @@ enum DescriptorAction {
     Close = 0,
 }
 
+#[derive(Copy, Clone, Debug)]
 #[repr(u8)]
 enum NetmdStatus {
     // NetMD Protocol return status (first byte of request)
@@ -199,8 +210,8 @@ enum NetmdStatus {
 }
 
 #[derive(Error, Debug, Eq, PartialEq, PartialOrd, Ord)]
-#[error("invalid status code")]
-pub struct StatusError;
+#[error("invalid status code: {}", 1)]
+pub struct StatusError(u16);
 
 impl TryFrom<u8> for NetmdStatus {
     type Error = StatusError;
@@ -219,7 +230,7 @@ impl TryFrom<u8> for NetmdStatus {
             0x0c => Ok(NetmdStatus::Implemented),
             0x0d => Ok(NetmdStatus::Changed),
             0x0f => Ok(NetmdStatus::Interim),
-            _ => Err(StatusError),
+            code => Err(StatusError(code as u16)),
         }
     }
 }
@@ -232,6 +243,7 @@ struct MediaInfo {
     supports_md_clip: u8,
 }
 
+/// An error when encrypting packets
 #[derive(Error, Debug, Eq, PartialEq, PartialOrd, Ord)]
 pub enum EncryptionError {
     #[error("supplied depth of {0} is invalid")]
@@ -241,6 +253,7 @@ pub enum EncryptionError {
     InvalidLength(&'static str, usize),
 }
 
+/// An error for any action in the interface
 #[derive(Error, Debug, Eq, PartialEq, PartialOrd, Ord)]
 pub enum InterfaceError {
     #[error("could not parse data from a device")]
@@ -297,7 +310,7 @@ impl NetMDInterface {
     const INTERIM_RESPONSE_RETRY_INTERVAL: u32 = 100;
 
     /// Get a new interface to a NetMD device
-    pub async fn new(device: cross_usb::Descriptor) -> Result<Self, InterfaceError> {
+    pub async fn new(device: cross_usb::DeviceInfo) -> Result<Self, InterfaceError> {
         let device = base::NetMD::new(device).await?;
         Ok(NetMDInterface { device })
     }
@@ -320,9 +333,9 @@ impl NetMDInterface {
         )
         .await?;
 
-        let mut query = format_query("1809 00 ff00 0000 0000".to_string(), vec![])?;
+        let query = format_query("1809 00 ff00 0000 0000".to_string(), vec![])?;
 
-        let reply = self.send_query(&mut query, false, false).await?;
+        let reply = self.send_query(&query, false, false).await?;
 
         let res = scan_query(
             reply,
@@ -430,7 +443,7 @@ impl NetMDInterface {
 
         query.push(0x00);
 
-        match self.send_query(&mut query, false, false).await {
+        match self.send_query(&query, false, false).await {
             Ok(_) => Ok(()),
             Err(err) => Err(err),
         }
@@ -439,7 +452,7 @@ impl NetMDInterface {
     /// Send a query to the NetMD player
     async fn send_query(
         &mut self,
-        query: &mut Vec<u8>,
+        query: &Vec<u8>,
         test: bool,
         accept_interim: bool,
     ) -> Result<Vec<u8>, InterfaceError> {
@@ -452,7 +465,7 @@ impl NetMDInterface {
 
     async fn send_command(
         &mut self,
-        query: &mut Vec<u8>,
+        query: &Vec<u8>,
         test: bool,
     ) -> Result<(), InterfaceError> {
         let status_byte = match test {
@@ -463,7 +476,7 @@ impl NetMDInterface {
         let mut new_query = Vec::new();
 
         new_query.push(status_byte as u8);
-        new_query.append(query);
+        new_query.extend_from_slice(&query);
 
         self.device.send_command(new_query).await?;
 
@@ -478,6 +491,7 @@ impl NetMDInterface {
             data = self.device.read_reply(None).await?;
 
             let status = NetmdStatus::try_from(data[0])?;
+            debug!("Device status: {:?}", status);
 
             match status {
                 NetmdStatus::NotImplemented => {
@@ -510,12 +524,12 @@ impl NetMDInterface {
     }
 
     async fn playback_control(&mut self, action: Action) -> Result<(), InterfaceError> {
-        let mut query = format_query(
+        let query = format_query(
             "18c3 ff %b 000000".to_string(),
             vec![QueryValue::Number(action as i64)],
         )?;
 
-        let reply = self.send_query(&mut query, false, false).await?;
+        let reply = self.send_query(&query, false, false).await?;
 
         scan_query(reply, "18c3 00 %b 000000".to_string())?;
 
@@ -545,9 +559,9 @@ impl NetMDInterface {
     //TODO: Implement fix for LAM-1
     /// Stop playback
     pub async fn stop(&mut self) -> Result<(), InterfaceError> {
-        let mut query = format_query("18c5 ff 00000000".to_string(), vec![])?;
+        let query = format_query("18c5 ff 00000000".to_string(), vec![])?;
 
-        let reply = self.send_query(&mut query, false, false).await?;
+        let reply = self.send_query(&query, false, false).await?;
 
         scan_query(reply, "18c5 00 00000000".to_string())?;
 
@@ -555,8 +569,8 @@ impl NetMDInterface {
     }
 
     pub async fn acquire(&mut self) -> Result<(), InterfaceError> {
-        let mut query = format_query("ff 010c ffff ffff ffff ffff ffff ffff".to_string(), vec![])?;
-        let reply = self.send_query(&mut query, false, false).await?;
+        let query = format_query("ff 010c ffff ffff ffff ffff ffff ffff".to_string(), vec![])?;
+        let reply = self.send_query(&query, false, false).await?;
 
         scan_query(reply, "ff 010c ffff ffff ffff ffff ffff ffff".to_string())?;
 
@@ -564,9 +578,9 @@ impl NetMDInterface {
     }
 
     pub async fn release(&mut self) -> Result<(), InterfaceError> {
-        let mut query = format_query("ff 0100 ffff ffff ffff ffff ffff ffff".to_string(), vec![])?;
+        let query = format_query("ff 0100 ffff ffff ffff ffff ffff ffff".to_string(), vec![])?;
 
-        let reply = self.send_query(&mut query, false, false).await?;
+        let reply = self.send_query(&query, false, false).await?;
 
         scan_query(reply, "ff 0100 ffff ffff ffff ffff ffff ffff".to_string())?;
 
@@ -580,12 +594,12 @@ impl NetMDInterface {
         )
         .await?;
 
-        let mut query = format_query(
+        let query = format_query(
             "1809 8001 0230 8800 0030 8804 00 ff00 00000000".to_string(),
             vec![],
         )?;
 
-        let reply = self.send_query(&mut query, false, false).await?;
+        let reply = self.send_query(&query, false, false).await?;
 
         let res = scan_query(
             reply,
@@ -617,12 +631,12 @@ impl NetMDInterface {
         )
         .await?;
 
-        let mut query = format_query(
+        let query = format_query(
             "1809 8001 0330 8802 0030 8805 0030 8806 00 ff00 00000000".to_string(),
             vec![],
         )
         .unwrap();
-        let reply = self.send_query(&mut query, false, false).await?;
+        let reply = self.send_query(&query, false, false).await?;
 
         let result = scan_query(
             reply,
@@ -636,7 +650,9 @@ impl NetMDInterface {
             .await?;
 
         if operating_status.len() < 2 {
-            return Err(InterfaceError::InvalidStatus(StatusError));
+            if !operating_status.is_empty() {
+                return Err(InterfaceError::InvalidStatus(StatusError(operating_status[0] as u16)));
+            }
         }
 
         let operating_status_number =
@@ -658,20 +674,23 @@ impl NetMDInterface {
         )
         .await?;
 
-        let mut query = format_query(
+        let query = format_query(
             "1809 8001 0330 %w 0030 8805 0030 %w 00 ff00 00000000".to_string(),
             vec![QueryValue::Number(p1 as i64), QueryValue::Number(p2 as i64)],
         )?;
 
-        let reply = self.send_query(&mut query, false, false).await?;
+        let reply = self.send_query(&query, false, false).await?;
 
         let res = scan_query(
             reply,
             "1809 8001 0330 %?%? %?%? %?%? %?%? %?%? %? 1000 00%?0000 %x %?".to_string(),
         )?;
 
-        self.change_descriptor_state(&Descriptor::OperatingStatusBlock, &DescriptorAction::Close)
-            .await?;
+        self.change_descriptor_state(
+            &Descriptor::OperatingStatusBlock,
+            &DescriptorAction::Close
+        )
+        .await?;
 
         Ok(res[0].to_vec().unwrap())
     }
@@ -689,21 +708,18 @@ impl NetMDInterface {
         self.change_descriptor_state(
             &Descriptor::OperatingStatusBlock,
             &DescriptorAction::OpenRead,
-        )
-        .await?;
+        ).await?;
 
-        let mut query = format_query(
+        let query = format_query(
             "1809 8001 0430 8802 0030 8805 0030 0003 0030 0002 00 ff00 00000000".to_string(),
             vec![],
         )
         .unwrap();
 
-        let reply = match self.send_query(&mut query, false, false).await {
-            Ok(result) => result,
-            Err(e) => match e {
-                InterfaceError::Rejected(_) => Vec::new(),
-                _ => return Err(e),
-            },
+        //TODO: Ensure this is ok, we might want to do proper error handling
+        let reply = match self.send_query(&query, false, false).await {
+            Ok(d) => d,
+            Err(_) => return Ok([0u16; 5]),
         };
 
         let result = scan_query(reply, "1809 8001 0430 %?%? %?%? %?%? %?%? %?%? %?%? %?%? %? %?00 00%?0000 000b 0002 0007 00 %w %B %B %B %B".to_string())?;
@@ -716,26 +732,28 @@ impl NetMDInterface {
             result[4].to_i64().unwrap() as u16,
         ];
 
-        self.change_descriptor_state(&Descriptor::OperatingStatusBlock, &DescriptorAction::Close)
-            .await?;
+        self.change_descriptor_state(
+            &Descriptor::OperatingStatusBlock,
+            &DescriptorAction::Close
+        ).await?;
 
         Ok(final_result)
     }
 
     /// Eject the disc from the player if supported
     pub async fn eject_disc(&mut self) -> Result<(), InterfaceError> {
-        let mut query = format_query("18c1 ff 6000".to_string(), vec![]).unwrap();
+        let query = format_query("18c1 ff 6000".to_string(), vec![]).unwrap();
 
-        let _reply = self.send_query(&mut query, false, false).await?;
+        let _reply = self.send_query(&query, false, false).await?;
 
         Ok(())
     }
 
     /// Check if the machine has the capability to eject a disc
     pub async fn can_eject_disc(&mut self) -> Result<bool, InterfaceError> {
-        let mut query = format_query("18c1 ff 6000".to_string(), vec![]).unwrap();
+        let query = format_query("18c1 ff 6000".to_string(), vec![]).unwrap();
 
-        match self.send_query(&mut query, true, false).await {
+        match self.send_query(&query, true, false).await {
             Ok(_) => Ok(true),
             Err(error) => Err(error),
         }
@@ -743,13 +761,13 @@ impl NetMDInterface {
 
     /// Move the playback to a specific track
     pub async fn go_to_track(&mut self, track_number: u16) -> Result<u16, InterfaceError> {
-        let mut query = format_query(
+        let query = format_query(
             "1850 ff010000 0000 %w".to_string(),
             vec![QueryValue::Number(track_number as i64)],
         )
         .unwrap();
 
-        let reply = self.send_query(&mut query, false, false).await?;
+        let reply = self.send_query(&query, false, false).await?;
 
         let res = scan_query(reply, "1850 00010000 0000 %w".to_string())?;
 
@@ -767,7 +785,7 @@ impl NetMDInterface {
         second: u8,
         frame: u8,
     ) -> Result<u16, InterfaceError> {
-        let mut query = format_query(
+        let query = format_query(
             "1850 ff000000 0000 %w %B%B%B%B".to_string(),
             vec![
                 QueryValue::Number(track_number as i64),
@@ -779,7 +797,7 @@ impl NetMDInterface {
         )
         .unwrap();
 
-        let reply = self.send_query(&mut query, false, false).await?;
+        let reply = self.send_query(&query, false, false).await?;
 
         let res = scan_query(reply, "1850 00000000 %?%? %w %B%B%B%B".to_string())?;
 
@@ -788,14 +806,15 @@ impl NetMDInterface {
         Ok(value as u16)
     }
 
+    /// Change track in a [`Direction`]
     pub async fn track_change(&mut self, direction: Direction) -> Result<(), InterfaceError> {
-        let mut query = format_query(
+        let query = format_query(
             "1850 ff10 00000000 %w".to_string(),
             vec![QueryValue::Number(direction as i64)],
         )
         .unwrap();
 
-        let reply = self.send_query(&mut query, false, false).await?;
+        let reply = self.send_query(&query, false, false).await?;
 
         scan_query(reply, "1850 0010 00000000 %?%?".to_string())?;
 
@@ -804,21 +823,22 @@ impl NetMDInterface {
 
     /// Erase the disc entirely
     pub async fn erase_disc(&mut self) -> Result<(), InterfaceError> {
-        let mut query = format_query("1840 ff 0000".to_string(), vec![]).unwrap();
-        let reply = self.send_query(&mut query, false, false).await?;
+        let query = format_query("1840 ff 0000".to_string(), vec![]).unwrap();
+        let reply = self.send_query(&query, false, false).await?;
         scan_query(reply, "1840 00 0000".to_string())?;
         Ok(())
     }
 
     // TODO: Ensure this is returning the correct value, it
     // looks like it actually might be a 16 bit integer
+    /// Get the flags from a disc
     pub async fn disc_flags(&mut self) -> Result<u8, InterfaceError> {
         self.change_descriptor_state(&Descriptor::RootTD, &DescriptorAction::OpenRead)
             .await?;
 
-        let mut query = format_query("1806 01101000 ff00 0001000b".to_string(), vec![]).unwrap();
+        let query = format_query("1806 01101000 ff00 0001000b".to_string(), vec![]).unwrap();
 
-        let reply = self.send_query(&mut query, false, false).await?;
+        let reply = self.send_query(&query, false, false).await?;
 
         let res = scan_query(reply, "1806 01101000 1000 0001000b %b".to_string()).unwrap();
 
@@ -828,15 +848,15 @@ impl NetMDInterface {
         Ok(res[0].to_i64().unwrap() as u8)
     }
 
-    /// The number of tracks on  the disc
+    /// Get the number of tracks on  the disc
     pub async fn track_count(&mut self) -> Result<u16, InterfaceError> {
         self.change_descriptor_state(&Descriptor::AudioContentsTD, &DescriptorAction::OpenRead)
             .await?;
 
-        let mut query =
+        let query =
             format_query("1806 02101001 3000 1000 ff00 00000000".to_string(), vec![]).unwrap();
 
-        let reply = self.send_query(&mut query, false, false).await?;
+        let reply = self.send_query(&query, false, false).await?;
 
         let res = scan_query(
             reply,
@@ -870,7 +890,7 @@ impl NetMDInterface {
                 false => 0,
             };
 
-            let mut query = format_query(
+            let query = format_query(
                 "1806 02201801 00%b 3000 0a00 ff00 %w%w".to_string(),
                 vec![
                     QueryValue::Number(wchar_value),
@@ -880,7 +900,7 @@ impl NetMDInterface {
             )
             .unwrap();
 
-            let reply = self.send_query(&mut query, false, false).await?;
+            let reply = self.send_query(&query, false, false).await?;
 
             if remaining == 0 {
                 let res = scan_query(
@@ -917,7 +937,7 @@ impl NetMDInterface {
         Ok(res)
     }
 
-    /// Gets the disc title
+    /// Gets the disc title without group information
     pub async fn disc_title(&mut self, wchar: bool) -> Result<String, InterfaceError> {
         let mut title = self.raw_disc_title(wchar).await?;
 
@@ -1051,7 +1071,7 @@ impl NetMDInterface {
 
         let mut track_titles: Vec<String> = vec![];
         for i in tracks {
-            let mut query = format_query(
+            let query = format_query(
                 "1806 022018%b %w 3000 0a00 ff00 00000000".to_string(),
                 vec![
                     QueryValue::Number(wchar_value),
@@ -1060,7 +1080,7 @@ impl NetMDInterface {
             )
             .unwrap();
 
-            let reply = self.send_query(&mut query, false, false).await?;
+            let reply = self.send_query(&query, false, false).await?;
 
             let res = scan_query(
                 reply,
@@ -1095,6 +1115,9 @@ impl NetMDInterface {
     }
 
     // Sets the title of the disc
+    //
+    // Caution: This does not respect groups. Use the functions available in
+    // NetMDContext to properly rename a disc.
     pub async fn set_disc_title(&mut self, title: &str, wchar: bool) -> Result<(), InterfaceError> {
         let current_title = self.raw_disc_title(wchar).await?;
         if current_title == title {
@@ -1127,7 +1150,7 @@ impl NetMDInterface {
                 .await?
         }
 
-        let mut query = format_query(
+        let query = format_query(
             "1807 02201801 00%b 3000 0a00 5000 %w 0000 %w %*".to_string(),
             vec![
                 QueryValue::Number(wchar_value),
@@ -1137,7 +1160,7 @@ impl NetMDInterface {
             ],
         )?;
 
-        let _ = self.send_query(&mut query, false, false).await;
+        let _ = self.send_query(&query, false, false).await;
 
         if self.device.vendor_id() == 0x04dd {
             self.change_descriptor_state(&Descriptor::AudioUTOC1TD, &DescriptorAction::Close)
@@ -1191,7 +1214,7 @@ impl NetMDInterface {
         self.change_descriptor_state(&descriptor, &DescriptorAction::OpenWrite)
             .await?;
 
-        let mut query = format_query(
+        let query = format_query(
             "1807 022018%b %w 3000 0a00 5000 %w 0000 %w %*".to_string(),
             vec![
                 QueryValue::Number(wchar_value),
@@ -1201,7 +1224,7 @@ impl NetMDInterface {
                 QueryValue::Array(new_title),
             ],
         )?;
-        let reply = self.send_query(&mut query, false, false).await?;
+        let reply = self.send_query(&query, false, false).await?;
 
         let _ = scan_query(
             reply,
@@ -1215,19 +1238,19 @@ impl NetMDInterface {
 
     /// Erases a track from the disc's UTOC
     pub async fn erase_track(&mut self, track: u16) -> Result<(), InterfaceError> {
-        let mut query = format_query(
+        let query = format_query(
             "1840 ff01 00 201001 %w".to_string(),
             vec![QueryValue::Number(track as i64)],
         )?;
 
-        let _result = self.send_query(&mut query, false, false).await;
+        let _result = self.send_query(&query, false, false).await;
 
         Ok(())
     }
 
     /// Moves a track to another index on the disc
     pub async fn move_track(&mut self, source: u16, dest: u16) -> Result<(), InterfaceError> {
-        let mut query = format_query(
+        let query = format_query(
             "1843 ff00 00 201001 %w 201001 %w".to_string(),
             vec![
                 QueryValue::Number(source as i64),
@@ -1235,7 +1258,7 @@ impl NetMDInterface {
             ],
         )?;
 
-        let _result = self.send_query(&mut query, false, false).await;
+        let _result = self.send_query(&query, false, false).await;
 
         Ok(())
     }
@@ -1250,7 +1273,7 @@ impl NetMDInterface {
         self.change_descriptor_state(&Descriptor::AudioContentsTD, &DescriptorAction::OpenRead)
             .await?;
 
-        let mut query = format_query(
+        let query = format_query(
             "1806 02201001 %w %w %w ff00 00000000".to_string(),
             vec![
                 QueryValue::Number(track as i64),
@@ -1259,7 +1282,7 @@ impl NetMDInterface {
             ],
         )?;
 
-        let reply = self.send_query(&mut query, false, false).await?;
+        let reply = self.send_query(&query, false, false).await?;
         let res = scan_query(
             reply,
             "1806 02201001 %?%? %?%? %?%? 1000 00%?0000 %x".to_string(),
@@ -1282,7 +1305,7 @@ impl NetMDInterface {
             .await?;
 
         for track in tracks {
-            let mut query = format_query(
+            let query = format_query(
                 "1806 02201001 %w %w %w ff00 00000000".to_string(),
                 vec![
                     QueryValue::Number(track as i64),
@@ -1291,7 +1314,7 @@ impl NetMDInterface {
                 ],
             )?;
 
-            let reply = self.send_query(&mut query, false, false).await?;
+            let reply = self.send_query(&query, false, false).await?;
 
             let res = scan_query(
                 reply,
@@ -1358,11 +1381,11 @@ impl NetMDInterface {
         self.change_descriptor_state(&Descriptor::AudioContentsTD, &DescriptorAction::OpenRead)
             .await?;
 
-        let mut query = format_query(
+        let query = format_query(
             "1806 01201001 %w ff00 00010008".to_string(),
             vec![QueryValue::Number(track as i64)],
         )?;
-        let reply = self.send_query(&mut query, false, false).await?;
+        let reply = self.send_query(&query, false, false).await?;
 
         let res = scan_query(reply, "1806 01201001 %?%? 10 00 00010008 %b".to_string())?;
 
@@ -1377,8 +1400,8 @@ impl NetMDInterface {
         self.change_descriptor_state(&Descriptor::RootTD, &DescriptorAction::OpenRead)
             .await?;
 
-        let mut query = format_query("1806 02101000 3080 0300 ff00 00000000".to_string(), vec![])?;
-        let reply = self.send_query(&mut query, false, false).await?;
+        let query = format_query("1806 02101000 3080 0300 ff00 00000000".to_string(), vec![])?;
+        let reply = self.send_query(&query, false, false).await?;
 
         // 8003 changed to %?03 - Panasonic returns 0803 instead. This byte's meaning is unknown
         let res = scan_query(
@@ -1410,12 +1433,12 @@ impl NetMDInterface {
         )
         .await?;
 
-        let mut query = format_query(
+        let query = format_query(
             "1809 8001 0330 8801 0030 8805 0030 8807 00 ff00 00000000".to_string(),
             vec![],
         )?;
 
-        let reply = self.send_query(&mut query, false, false).await?;
+        let reply = self.send_query(&query, false, false).await?;
 
         let res = scan_query(reply, "1809 8001 0330 8801 0030 8805 0030 8807 00 1000 000e0000 000c 8805 0008 80e0 0110 %b %b 4000".to_string())?;
 
@@ -1433,12 +1456,12 @@ impl NetMDInterface {
         track: u16,
         progress_callback: Option<F>,
     ) -> Result<(DiscFormat, u16, Vec<u8>), InterfaceError> {
-        let mut query = format_query(
+        let query = format_query(
             "1800 080046 f003010330 ff00 1001 %w".to_string(),
             vec![QueryValue::Number((track + 1) as i64)],
         )?;
 
-        let reply = self.send_query(&mut query, false, true).await?;
+        let reply = self.send_query(&query, false, true).await?;
 
         let res = scan_query(
             reply,
@@ -1473,28 +1496,28 @@ impl NetMDInterface {
     }
 
     pub async fn disable_new_track_protection(&mut self, val: u16) -> Result<(), InterfaceError> {
-        let mut query = format_query(
+        let query = format_query(
             "1800 080046 f0030103 2b ff %w".to_string(),
             vec![QueryValue::Number(val as i64)],
         )?;
 
-        let reply = self.send_query(&mut query, false, false).await?;
+        let reply = self.send_query(&query, false, false).await?;
         scan_query(reply, "1800 080046 f0030103 2b 00 %?%?".to_string())?;
         Ok(())
     }
 
     pub async fn enter_secure_session(&mut self) -> Result<(), InterfaceError> {
-        let mut query = format_query("1800 080046 f0030103 80 ff".to_string(), vec![])?;
+        let query = format_query("1800 080046 f0030103 80 ff".to_string(), vec![])?;
 
-        let reply = self.send_query(&mut query, false, false).await?;
+        let reply = self.send_query(&query, false, false).await?;
         scan_query(reply, "1800 080046 f0030103 80 00".to_string())?;
         Ok(())
     }
 
     pub async fn leave_secure_session(&mut self) -> Result<(), InterfaceError> {
-        let mut query = format_query("1800 080046 f0030103 81 ff".to_string(), vec![])?;
+        let query = format_query("1800 080046 f0030103 81 ff".to_string(), vec![])?;
 
-        let reply = self.send_query(&mut query, false, false).await?;
+        let reply = self.send_query(&query, false, false).await?;
         scan_query(reply, "1800 080046 f0030103 81 00".to_string())?;
         Ok(())
     }
@@ -1506,9 +1529,9 @@ impl NetMDInterface {
     ///
     /// The leaf ID is a 8-byte constant
     pub async fn leaf_id(&mut self) -> Result<[u8; 8], InterfaceError> {
-        let mut query = format_query("1800 080046 f0030103 11 ff".to_string(), vec![])?;
+        let query = format_query("1800 080046 f0030103 11 ff".to_string(), vec![])?;
 
-        let reply = self.send_query(&mut query, false, false).await?;
+        let reply = self.send_query(&query, false, false).await?;
         let res = scan_query(reply, "1800 080046 f0030103 11 00 %*".to_string())?;
 
         Ok(res[0].to_vec().unwrap().try_into().unwrap())
@@ -1530,7 +1553,7 @@ impl NetMDInterface {
 
         let keychains = keychain.concat();
 
-        let mut query = format_query(
+        let query = format_query(
             "1800 080046 f0030103 12 ff %w 0000 %w %d %d %d 00000000 %* %*".to_string(),
             vec![
                 QueryValue::Number(databytes as i64),
@@ -1543,7 +1566,7 @@ impl NetMDInterface {
             ],
         )?;
 
-        let reply = self.send_query(&mut query, false, false).await?;
+        let reply = self.send_query(&query, false, false).await?;
 
         scan_query(
             reply,
@@ -1564,12 +1587,12 @@ impl NetMDInterface {
             ))?;
         }
 
-        let mut query = format_query(
+        let query = format_query(
             "1800 080046 f0030103 20 ff 000000 %*".to_string(),
             vec![QueryValue::Array(hostnonce)],
         )?;
 
-        let reply = self.send_query(&mut query, false, false).await?;
+        let reply = self.send_query(&query, false, false).await?;
 
         let res = scan_query(reply, "1800 080046 f0030103 20 %? 000000 %#".to_string())?;
 
@@ -1577,9 +1600,9 @@ impl NetMDInterface {
     }
 
     pub async fn session_key_forget(&mut self) -> Result<(), InterfaceError> {
-        let mut query = format_query("1800 080046 f0030103 21 ff 000000".to_string(), vec![])?;
+        let query = format_query("1800 080046 f0030103 21 ff 000000".to_string(), vec![])?;
 
-        let reply = self.send_query(&mut query, false, false).await?;
+        let reply = self.send_query(&query, false, false).await?;
         let _ = scan_query(reply, "1800 080046 f0030103 21 00 000000".to_string())?;
 
         Ok(())
@@ -1615,12 +1638,12 @@ impl NetMDInterface {
             .encrypt_padded_mut::<NoPadding>(message.as_mut_slice(), 32)
             .unwrap();
 
-        let mut query = format_query(
+        let query = format_query(
             "1800 080046 f0030103 22 ff 0000 %*".to_string(),
             vec![QueryValue::Array(message)],
         )?;
 
-        let reply = self.send_query(&mut query, false, false).await?;
+        let reply = self.send_query(&query, false, false).await?;
 
         scan_query(reply, "1800 080046 f0030103 22 00 0000".to_string())?;
 
@@ -1644,7 +1667,7 @@ impl NetMDInterface {
             .encrypt_padded_mut::<NoPadding>(&mut message, 8)
             .unwrap();
 
-        let mut query = format_query(
+        let query = format_query(
             "1800 080046 f0030103 48 ff 00 1001 %w %*".to_string(),
             vec![
                 QueryValue::Number(track_number as i64),
@@ -1652,7 +1675,7 @@ impl NetMDInterface {
             ],
         )?;
 
-        let reply = self.send_query(&mut query, false, false).await?;
+        let reply = self.send_query(&query, false, false).await?;
 
         scan_query(reply, "1800 080046 f0030103 48 00 00 1001 %?%?".to_string())?;
 
@@ -1660,7 +1683,7 @@ impl NetMDInterface {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub async fn send_track<F>(
+    pub async fn send_track<F: Fn(usize, usize)>(
         &mut self,
         wireformat: u8,
         discformat: u8,
@@ -1671,8 +1694,6 @@ impl NetMDInterface {
         hex_session_key: &[u8],
         progress_callback: F,
     ) -> Result<(u16, Vec<u8>, Vec<u8>), InterfaceError>
-    where
-        F: Fn(usize, usize),
     {
         if hex_session_key.len() != 8 {
             return Err(EncryptionError::InvalidLength(
@@ -1686,7 +1707,7 @@ impl NetMDInterface {
 
         let total_bytes: usize = (pkt_size + 24) as usize; //framesizedict[wireformat] * frames + pktcount * 24;
 
-        let mut query = format_query(
+        let query = format_query(
             "1800 080046 f0030103 28 ff 000100 1001 ffff 00 %b %b %d %d".to_string(),
             vec![
                 QueryValue::Number(wireformat as i64),
@@ -1695,7 +1716,7 @@ impl NetMDInterface {
                 QueryValue::Number(total_bytes as i64),
             ],
         )?;
-        let mut reply = self.send_query(&mut query, false, true).await?;
+        let mut reply = self.send_query(&query, false, true).await?;
         scan_query(
             reply,
             "1800 080046 f0030103 28 00 000100 1001 %?%? 00 %*".to_string(),
@@ -1744,11 +1765,11 @@ impl NetMDInterface {
     }
 
     pub async fn track_uuid(&mut self, track: u16) -> Result<String, InterfaceError> {
-        let mut query = format_query(
+        let query = format_query(
             "1800 080046 f0030103 23 ff 1001 %w".to_string(),
             vec![QueryValue::Number(track as i64)],
         )?;
-        let reply = self.send_query(&mut query, false, false).await?;
+        let reply = self.send_query(&query, false, false).await?;
 
         let res = scan_query(reply, "1800 080046 f0030103 23 00 1001 %?%? %*".to_string())?;
 
@@ -1756,8 +1777,8 @@ impl NetMDInterface {
     }
 
     pub async fn terminate(&mut self) -> Result<(), InterfaceError> {
-        let mut query = format_query("1800 080046 f0030103 2a ff00".to_string(), vec![])?;
-        self.send_query(&mut query, false, false).await?;
+        let query = format_query("1800 080046 f0030103 2a ff00".to_string(), vec![])?;
+        self.send_query(&query, false, false).await?;
 
         Ok(())
     }
@@ -1768,7 +1789,7 @@ type DesCbcEnc = cbc::Encryptor<des::Des>;
 type DesCbcDec = cbc::Decryptor<des::Des>;
 type TDesCbcEnc = cbc::Encryptor<des::TdesEde3>;
 
-pub fn retailmac(key: &[u8], value: &[u8], iv: &[u8; 8]) -> Vec<u8> {
+pub(super) fn retailmac(key: &[u8], value: &[u8], iv: &[u8; 8]) -> Vec<u8> {
     let mut subkey_a = [0u8; 8];
     subkey_a.copy_from_slice(&key[0..8]);
 
@@ -1794,13 +1815,13 @@ pub fn retailmac(key: &[u8], value: &[u8], iv: &[u8; 8]) -> Vec<u8> {
     end[..8].to_vec()
 }
 
-pub struct EKBData {
+pub(super) struct EKBData {
     chains: [[u8; 16]; 2],
     depth: i32,
     signature: [u8; 24],
 }
 
-pub struct EKBOpenSource;
+pub(super) struct EKBOpenSource;
 
 impl EKBOpenSource {
     pub fn root_key(&self) -> [u8; 16] {
@@ -1909,7 +1930,7 @@ impl MDTrack {
     }
 }
 
-pub struct MDSession<'a> {
+pub(super) struct MDSession<'a> {
     pub md: &'a mut NetMDInterface,
     pub ekb_object: EKBOpenSource,
     pub hex_session_key: Option<Vec<u8>>,
@@ -1948,14 +1969,12 @@ impl<'a> MDSession<'a> {
         Ok(())
     }
 
-    pub async fn download_track<F>(
+    pub async fn download_track<F: Fn(usize, usize)>(
         &mut self,
         mut track: MDTrack,
         progress_callback: F,
         disc_format: Option<DiscFormat>,
     ) -> Result<(u16, Vec<u8>, Vec<u8>), Box<dyn Error>>
-    where
-        F: Fn(usize, usize),
     {
         if self.hex_session_key.is_none() {
             return Err("Cannot download a track using a non-init()'ed session!".into());

@@ -5,13 +5,13 @@
 //! [futures_lite](https://docs.rs/futures-lite/) with the `block_on` function.
 //!
 //! To use this library, first you need to get a device from [`cross_usb`] and
-//! then open a [`NetMDContext`].
+//! then open a [`netmd::NetMDContext`].
 //!
 //! ```no_run
 //! # tokio_test::block_on(async {
 //! use cross_usb::get_device;
 //! use minidisc::netmd::base::DEVICE_IDS_CROSSUSB;
-//! use minidisc::NetMDContext;
+//! use minidisc::netmd::NetMDContext;
 //!
 //! // Get a device using the built-in list of descriptors for minidisc devices
 //! let dev_descriptor = cross_usb::get_device(DEVICE_IDS_CROSSUSB.to_vec()).await
@@ -28,6 +28,3 @@
 //! ```
 
 pub mod netmd;
-
-#[doc(inline)]
-pub use netmd::commands::NetMDContext;
