@@ -1040,11 +1040,13 @@ impl NetMDInterface {
             ));
         }
 
+        let mut remaining_tracks = Vec::new();
         for i in 0..track_count {
             if !track_dict.contains_key(&i) {
-                result.insert(0, (None, None, Vec::from([i])))
+                remaining_tracks.push(i);
             }
         }
+        result.insert(0, (None, None, remaining_tracks));
 
         Ok(result)
     }
