@@ -15,9 +15,9 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::time::Duration;
 use thiserror::Error;
-use tokio::sync::mpsc::UnboundedReceiver;
 
 use super::base::NetMD;
+use super::encryption::Encryptor;
 use super::utils::{cross_sleep, to_sjis};
 
 /// An action to take on the player
@@ -1690,8 +1690,7 @@ impl NetMDInterface {
         discformat: u8,
         frames: u32,
         pkt_size: u32,
-        // key, iv, data
-        mut packets: UnboundedReceiver<(Vec<u8>, Vec<u8>, Vec<u8>)>,
+        mut packets: Encryptor,
         hex_session_key: &[u8],
         progress_callback: F,
     ) -> Result<(u16, Vec<u8>, Vec<u8>), InterfaceError>
@@ -1730,7 +1729,7 @@ impl NetMDInterface {
         let mut written_bytes = 0;
         let mut packet_count = 0;
 
-        while let Some((key, iv, data)) = packets.recv().await {
+        while let Some((key, iv, data)) = packets.next().await {
             let binpack = if packet_count == 0 {
                 let packed_length: Vec<u8> = pkt_size.to_be_bytes().to_vec();
                 [vec![0, 0, 0, 0], packed_length, key, iv, data].concat()
@@ -1863,10 +1862,6 @@ pub struct MDTrack {
     pub data: Vec<u8>,
     pub chunk_size: usize,
     pub full_width_title: Option<String>,
-
-    #[allow(clippy::type_complexity)]
-    pub encrypt_packets_iterator:
-        Box<dyn Fn(DataEncryptorInput) -> UnboundedReceiver<(Vec<u8>, Vec<u8>, Vec<u8>)>>,
 }
 
 pub struct DataEncryptorInput {
@@ -1921,8 +1916,19 @@ impl MDTrack {
         [0x14, 0xe3, 0x83, 0x4e, 0xe2, 0xd3, 0xcc, 0xa5]
     }
 
-    pub fn get_encrypting_iterator(&mut self) -> UnboundedReceiver<(Vec<u8>, Vec<u8>, Vec<u8>)> {
-        (self.encrypt_packets_iterator)(DataEncryptorInput {
+    #[cfg(not(target_family = "wasm"))]
+    pub fn get_encrypting_iterator(&mut self) -> Encryptor {
+        Encryptor::new_threaded(DataEncryptorInput {
+            kek: self.get_kek(),
+            frame_size: self.frame_size(),
+            chunk_size: self.chunk_size(),
+            data: std::mem::take(&mut self.data),
+        })
+    }
+
+    #[cfg(target_family = "wasm")]
+    pub fn get_encrypting_iterator(&mut self) -> Encryptor {
+        Encryptor::new(DataEncryptorInput {
             kek: self.get_kek(),
             frame_size: self.frame_size(),
             chunk_size: self.chunk_size(),
