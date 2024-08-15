@@ -455,7 +455,7 @@ impl NetMDInterface {
     /// Send a query to the NetMD player
     async fn send_query(
         &mut self,
-        query: &Vec<u8>,
+        query: &[u8],
         test: bool,
         accept_interim: bool,
     ) -> Result<Vec<u8>, InterfaceError> {
@@ -468,7 +468,7 @@ impl NetMDInterface {
 
     async fn send_command(
         &mut self,
-        query: &Vec<u8>,
+        query: &[u8],
         test: bool,
     ) -> Result<(), InterfaceError> {
         let status_byte = match test {
@@ -479,7 +479,7 @@ impl NetMDInterface {
         let mut new_query = Vec::new();
 
         new_query.push(status_byte as u8);
-        new_query.extend_from_slice(&query);
+        new_query.extend_from_slice(query);
 
         self.device.send_command(new_query).await?;
 
@@ -650,10 +650,8 @@ impl NetMDInterface {
         self.change_descriptor_state(&Descriptor::OperatingStatusBlock, &DescriptorAction::Close)
             .await?;
 
-        if operating_status.len() < 2 {
-            if !operating_status.is_empty() {
-                return Err(InterfaceError::InvalidStatus(StatusError(operating_status[0] as u16)));
-            }
+        if operating_status.len() < 2 && !operating_status.is_empty() {
+            return Err(InterfaceError::InvalidStatus(StatusError(operating_status[0] as u16)));
         }
 
         let operating_status_number =

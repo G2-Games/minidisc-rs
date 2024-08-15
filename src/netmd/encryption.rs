@@ -10,6 +10,7 @@ type DesEcbEnc = ecb::Decryptor<des::Des>;
 type DesCbcEnc = cbc::Encryptor<des::Des>;
 
 pub struct Encryptor {
+    #[allow(clippy::type_complexity)]
     channel: Option<UnboundedReceiver<(Vec<u8>, Vec<u8>, Vec<u8>)>>,
     state: Option<EncryptorState>,
 }
