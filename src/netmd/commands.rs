@@ -549,7 +549,6 @@ impl NetMDContext {
     /// # tokio_test::block_on(async {
     /// use minidisc::netmd::DEVICE_IDS_CROSSUSB;
     /// use minidisc::netmd::NetMDContext;
-    /// use minidisc::netmd::encryption::new_thread_encryptor;
     /// use minidisc::netmd::interface::{MDTrack, NetMDInterface};
     ///
     /// // Get the minidisc device from cross_usb
@@ -571,7 +570,6 @@ impl NetMDContext {
     ///     format: minidisc::netmd::interface::WireFormat::LP2,
     ///     full_width_title: None,
     ///     data: track_contents,
-    ///     encrypt_packets_iterator: Box::new(new_thread_encryptor),
     /// };
     ///
     /// // Download it to the player!
