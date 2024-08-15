@@ -306,11 +306,14 @@ pub struct NetMDInterface {
 
 #[allow(dead_code)]
 impl NetMDInterface {
+    /// The maximum number of times to retry after an interim response
     const MAX_INTERIM_READ_ATTEMPTS: u8 = 4;
+
+    /// The amount of time to wait after an interim response (in milliseconds)
     const INTERIM_RESPONSE_RETRY_INTERVAL: u32 = 100;
 
     /// Get a new interface to a NetMD device
-    pub async fn new(device: cross_usb::Descriptor) -> Result<Self, InterfaceError> {
+    pub async fn new(device: cross_usb::DeviceInfo) -> Result<Self, InterfaceError> {
         let device = base::NetMD::new(device).await?;
         Ok(NetMDInterface { device })
     }
@@ -617,8 +620,6 @@ impl NetMDInterface {
     /// Check if a disc is loaded in the player
     pub async fn disc_present(&mut self) -> Result<bool, InterfaceError> {
         let status = self.status().await?;
-
-        println!("{:X?}", status);
 
         Ok(status[4] == 0x40)
     }
