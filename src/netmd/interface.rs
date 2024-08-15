@@ -17,7 +17,7 @@ use std::time::Duration;
 use thiserror::Error;
 
 use super::base::NetMD;
-use super::encryption::{threaded_encryptor, EncryptorState};
+use super::encryption::Encryptor;
 use super::utils::{cross_sleep, to_sjis};
 
 /// An action to take on the player
@@ -1690,11 +1690,7 @@ impl NetMDInterface {
         discformat: u8,
         frames: u32,
         pkt_size: u32,
-        // key, iv, data
-        #[cfg(not(target_family = "wasm"))]
-        mut packets: UnboundedReceiver<(Vec<u8>, Vec<u8>, Vec<u8>)>,
-        #[cfg(target_family = "wasm")]
-        mut packets: EncryptorState,
+        mut packets: Encryptor,
         hex_session_key: &[u8],
         progress_callback: F,
     ) -> Result<(u16, Vec<u8>, Vec<u8>), InterfaceError>
@@ -1733,7 +1729,7 @@ impl NetMDInterface {
         let mut written_bytes = 0;
         let mut packet_count = 0;
 
-        while let Some((key, iv, data)) = packets.recv().await {
+        while let Some((key, iv, data)) = packets.next().await {
             let binpack = if packet_count == 0 {
                 let packed_length: Vec<u8> = pkt_size.to_be_bytes().to_vec();
                 [vec![0, 0, 0, 0], packed_length, key, iv, data].concat()
@@ -1921,8 +1917,8 @@ impl MDTrack {
     }
 
     #[cfg(not(target_family = "wasm"))]
-    pub fn get_encrypting_iterator(&mut self) -> UnboundedReceiver<(Vec<u8>, Vec<u8>, Vec<u8>)> {
-        threaded_encryptor(DataEncryptorInput {
+    pub fn get_encrypting_iterator(&mut self) -> Encryptor {
+        Encryptor::new_threaded(DataEncryptorInput {
             kek: self.get_kek(),
             frame_size: self.frame_size(),
             chunk_size: self.chunk_size(),
@@ -1931,8 +1927,8 @@ impl MDTrack {
     }
 
     #[cfg(target_family = "wasm")]
-    pub fn get_encrypting_iterator(&mut self) -> EncryptorState {
-        EncryptorState::new(DataEncryptorInput {
+    pub fn get_encrypting_iterator(&mut self) -> Encryptor {
+        Encryptor::new(DataEncryptorInput {
             kek: self.get_kek(),
             frame_size: self.frame_size(),
             chunk_size: self.chunk_size(),
