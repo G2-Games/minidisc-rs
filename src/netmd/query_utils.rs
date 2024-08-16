@@ -103,7 +103,7 @@ pub enum QueryError {
 }
 
 /// Formats a query using a standard input to send to the player
-pub fn format_query(format: String, args: Vec<QueryValue>) -> Result<Vec<u8>, QueryError> {
+pub fn format_query(format: &'static str, args: Vec<QueryValue>) -> Result<Vec<u8>, QueryError> {
     if DEBUG {
         println!("SENT>>> F: {}", format);
     }
@@ -198,7 +198,7 @@ pub fn format_query(format: String, args: Vec<QueryValue>) -> Result<Vec<u8>, Qu
 }
 
 /// Scans a result using a standard input to recieve from the player
-pub fn scan_query(query_result: Vec<u8>, format: String) -> Result<Vec<QueryValue>, QueryError> {
+pub fn scan_query(query_result: Vec<u8>, format: &'static str) -> Result<Vec<QueryValue>, QueryError> {
     if DEBUG {
         println!("RECV<<< F: {}", format);
     }
@@ -312,7 +312,7 @@ pub fn scan_query(query_result: Vec<u8>, format: String) -> Result<Vec<QueryValu
                     index: i,
                     expected: format_value,
                     actual: input_value,
-                    format_string: format,
+                    format_string: format.to_string(),
                 });
             }
             half = None;

@@ -9,6 +9,11 @@ mod mappings;
 mod query_utils;
 mod utils;
 
+mod factory {
+    pub mod factory_interface;
+    pub mod factory_commands;
+}
+
 #[doc(inline)]
 pub use base::DEVICE_IDS_CROSSUSB;
 
