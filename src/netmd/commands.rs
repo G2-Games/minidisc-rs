@@ -32,8 +32,8 @@ pub enum OperatingStatus {
     ReadyForTransfer = 65319,
 }
 
-/// A representation of time in the same way NetMD devices do.
-#[derive(Debug, Clone)]
+/// A representation of time in the way a NetMD device uses internally.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Time {
     pub minute: u16,
     pub second: u16,
@@ -41,7 +41,7 @@ pub struct Time {
 }
 
 /// A representation of the current status of the device.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DeviceStatus {
     pub disc_present: bool,
     pub state: Option<OperatingStatus>,
@@ -50,7 +50,7 @@ pub struct DeviceStatus {
 }
 
 /// Information about a single track
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Track {
     index: u16,
     title: String,
@@ -76,6 +76,34 @@ impl Track {
             usize::max(encoding_name_correction, half_width_length),
             usize::max(encoding_name_correction, full_width_length),
         )
+    }
+
+    pub fn index(&self) -> u16 {
+        self.index
+    }
+
+    pub fn title(&self) -> &String {
+        &self.title
+    }
+
+    pub fn full_width_title(&self) -> &String {
+        &self.full_width_title
+    }
+
+    pub fn duration(&self) -> RawTime {
+        self.duration
+    }
+
+    pub fn channels(&self) -> Channels {
+        self.channel
+    }
+
+    pub fn encoding(&self) -> Encoding {
+        self.encoding
+    }
+
+    pub fn protected(&self) -> TrackFlag {
+        self.protected
     }
 }
 

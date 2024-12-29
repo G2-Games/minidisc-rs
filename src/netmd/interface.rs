@@ -75,7 +75,7 @@ impl WireFormat {
 }
 
 /// The encoding of the audio
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Encoding {
     SP = 0x90,
     LP2 = 0x92,
@@ -93,7 +93,7 @@ impl std::fmt::Display for Encoding {
 }
 
 /// The number of channels in the audio
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Channels {
     Mono = 0x01,
     Stereo = 0x00,
@@ -114,7 +114,7 @@ enum ChannelCount {
 }
 
 /// The protected flag on a track
-#[derive(Debug, Clone, Copy, FromPrimitive)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, FromPrimitive)]
 pub enum TrackFlag {
     Protected = 0x03,
     Unprotected = 0x00,
