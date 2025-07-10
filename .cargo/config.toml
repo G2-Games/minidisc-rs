@@ -1,5 +1,5 @@
 [target.'cfg(target_family = "wasm")']
-rustflags = ["--cfg=web_sys_unstable_apis"]
+rustflags = ["--cfg=web_sys_unstable_apis", "--cfg=getrandom_backend=\"wasm_js\""]
 
 # Enable for testing WASM-only stuff
 [build]

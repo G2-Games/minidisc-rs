@@ -1,7 +1,7 @@
 #![cfg_attr(debug_assertions, allow(dead_code))]
+use std::sync::LazyLock;
 use std::time::Duration;
 
-use once_cell::sync::Lazy;
 use thiserror::Error;
 
 // USB stuff
@@ -67,7 +67,7 @@ pub static DEVICE_IDS: &[DeviceId] = &[
 }
 
 /// Device IDs for use with [cross_usb]
-pub static DEVICE_IDS_CROSSUSB: Lazy<Box<[cross_usb::DeviceFilter]>> = Lazy::new(|| {
+pub static DEVICE_IDS_CROSSUSB: LazyLock<Box<[cross_usb::DeviceFilter]>> = LazyLock::new(|| {
     DEVICE_IDS
         .iter()
         .map(|d| {

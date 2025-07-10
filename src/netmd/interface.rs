@@ -1958,7 +1958,7 @@ impl<'a> MDSession<'a> {
             )
             .await?;
         let mut nonce = vec![0u8; 8];
-        rand::thread_rng().fill_bytes(&mut nonce);
+        rand::rng().fill_bytes(&mut nonce);
 
         let mut devnonce = self.md.session_key_exchange(nonce.clone()).await?;
         nonce.append(&mut devnonce);

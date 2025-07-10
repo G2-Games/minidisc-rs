@@ -1,7 +1,7 @@
 [package]
 name = "minidisc"
 version = "0.1.3"
-edition = "2021"
+edition = "2024"
 homepage = "https://github.com/G2-Games/minidisc-rs/"
 repository = "https://github.com/G2-Games/minidisc-rs/"
 documentation = "https://docs.rs/cross_usb"
@@ -28,30 +28,29 @@ targets = [
 crate-type = ["cdylib", "rlib"]
 
 [dev-dependencies]
-tokio-test = "0.4.3"
+tokio-test = "0.4"
 
 [dependencies]
-diacritics = "0.2.0"
-encoding_rs = "0.8.33"
-nofmt = "1.0.0"
-once_cell = "1.18.0"
-unicode-normalization = "0.1.22"
-regex = "1.10"
+diacritics = "0.2"
+encoding_rs = "0.8"
+nofmt = "1.0"
+unicode-normalization = "0.1"
+regex = "1.11"
 cross_usb = "0.4"
-num-derive = "0.4.2"
-num-traits = "0.2.14"
-rand = "0.8.5"
-getrandom = { version = "0.2", features = ["js"] }
+num-derive = "0.4"
+num-traits = "0.2"
+rand = "0.9"
+getrandom = { version = "0.3", features = ["wasm_js"] }
 des = "0.8"
 cbc = "0.1"
 ecb = "0.1"
-tokio = { version = "1.36", features = ["full", "sync"] }
-g2-unicode-jp = "0.4.1"
-thiserror = "1.0.57"
-phf = { version = "0.11.2", features = ["phf_macros", "macros"] }
-byteorder = "1.5.0"
-log = "0.4.22"
+tokio = { version = "1.36", features = ["sync"] }
+g2-unicode-jp = "0.4"
+thiserror = "2.0"
+phf = { version = "0.12", features = ["phf_macros", "macros"] }
+byteorder = "1.5"
+log = "0.4"
 
 [target.'cfg(target_family = "wasm")'.dependencies]
 gloo = { version = "0.11.0", features = ["futures", "worker"] }
-futures = "0.3.30"
+futures = "0.3"

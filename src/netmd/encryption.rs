@@ -36,7 +36,7 @@ impl Encryptor {
 
             // Create the random key
             let mut random_key = [0u8; 8];
-            rand::thread_rng().fill_bytes(&mut random_key);
+            rand::rng().fill_bytes(&mut random_key);
 
             // Encrypt it with the kek
             let mut encrypted_random_key = random_key;
@@ -101,7 +101,7 @@ impl Encryptor {
 
         // Create the random key
         let mut random_key = [0u8; 8];
-        rand::thread_rng().fill_bytes(&mut random_key);
+        rand::rng().fill_bytes(&mut random_key);
 
         // Encrypt it with the kek
         let mut encrypted_random_key = random_key;
