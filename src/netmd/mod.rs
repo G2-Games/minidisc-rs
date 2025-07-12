@@ -7,7 +7,7 @@ pub mod encryption;
 pub mod interface;
 mod mappings;
 mod query_utils;
-mod utils;
+pub mod utils;
 
 #[doc(inline)]
 pub use base::DEVICE_IDS_CROSSUSB;

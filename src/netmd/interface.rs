@@ -974,6 +974,9 @@ impl NetMDInterface {
 
         let raw_full_title = self.raw_disc_title(true).await?;
 
+        dbg!(&raw_title);
+        dbg!(&raw_full_title);
+
         let mut full_width_group_list = raw_full_title.split("／／");
 
         for (i, group) in group_list.enumerate() {
@@ -997,12 +1000,13 @@ impl NetMDInterface {
 
             let full_width_range = half_width_to_full_width_range(&track_range);
 
-            let full_width_group_name = full_width_group_list
-                .find(|n| n.starts_with(&full_width_range))
+            let full_width_group_name = if let Some(n) = full_width_group_list.find(|n| n.starts_with(&full_width_range)) {
+                n.split_once('；')
                 .unwrap()
-                .split_once('；')
-                .unwrap()
-                .1;
+                .1
+            } else {
+                ""
+            };
 
             let mut track_minmax: Vec<&str> = Vec::new();
             if track_range.find('-').is_some() {

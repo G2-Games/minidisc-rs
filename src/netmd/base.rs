@@ -94,9 +94,9 @@ pub enum Status {
 /// The ID of a device, including the name
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct DeviceId {
-    vendor_id: u16,
-    product_id: u16,
-    name: Option<&'static str>,
+    pub vendor_id: u16,
+    pub product_id: u16,
+    pub name: Option<&'static str>,
 }
 
 #[derive(Error, Debug, PartialEq, Eq, PartialOrd, Ord)]
