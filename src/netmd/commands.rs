@@ -40,6 +40,15 @@ pub struct Time {
     pub frame: u16,
 }
 
+impl From<Time> for Duration {
+    fn from(value: Time) -> Self {
+        Duration::from_millis(
+            (value.minute as u64 * 60000)
+            + (value.second as u64 * 1000)
+        )
+    }
+}
+
 /// A representation of the current status of the device.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DeviceStatus {
@@ -131,6 +140,22 @@ pub struct Disc {
 }
 
 impl Disc {
+    pub fn title(&self) -> &String {
+        &self.title
+    }
+
+    pub fn full_width_title(&self) -> &String {
+        &self.full_width_title
+    }
+
+    pub fn writeable(&self) -> bool {
+        self.writeable
+    }
+
+    pub fn write_protected(&self) -> bool {
+        self.write_protected
+    }
+
     pub fn track_count(&self) -> u16 {
         self.groups
             .iter()
@@ -328,7 +353,7 @@ impl NetMDContext {
     }
 
     /// Get the current status of the device
-    pub async fn device_status(&mut self) -> Result<DeviceStatus, Box<dyn Error>> {
+    pub async fn device_status(&mut self) -> Result<DeviceStatus, InterfaceError> {
         let status = self.interface.status().await?;
         let playback_status = self.interface.playback_status2().await?;
         let b1: u16 = playback_status[4] as u16;
@@ -359,7 +384,7 @@ impl NetMDContext {
     }
 
     /// Get a representation of the current disc inserted in the device.
-    pub async fn list_content(&mut self) -> Result<Disc, Box<dyn Error>> {
+    pub async fn list_content(&mut self) -> Result<Disc, InterfaceError> {
         let flags = self.interface.disc_flags().await?;
         let title = self.interface.disc_title(false).await?;
         let full_width_title = self.interface.disc_title(true).await?;
@@ -439,7 +464,7 @@ impl NetMDContext {
         &mut self,
         new_name: &str,
         new_fw_name: Option<&str>,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), InterfaceError> {
         let new_name = sanitize_half_width_title(new_name);
         let new_fw_name = new_fw_name.map(sanitize_full_width_title);
 
@@ -519,7 +544,7 @@ impl NetMDContext {
         &mut self,
         track: u16,
         progress_callback: Option<F>,
-    ) -> Result<(DiscFormat, Vec<u8>), Box<dyn Error>> {
+    ) -> Result<(DiscFormat, Vec<u8>), InterfaceError> {
         let mut output_vec = Vec::new();
         let (format, _frames, result) = self
             .interface
@@ -548,7 +573,7 @@ impl NetMDContext {
         Ok((format, header))
     }
 
-    async fn prepare_download(&mut self) -> Result<(), Box<dyn Error>> {
+    async fn prepare_download(&mut self) -> Result<(), InterfaceError> {
         while ![OperatingStatus::DiscBlank, OperatingStatus::Ready].contains(
             &self
                 .device_status()
@@ -611,7 +636,7 @@ impl NetMDContext {
         &mut self,
         track: MDTrack,
         progress_callback: F,
-    ) -> Result<(u16, Vec<u8>, Vec<u8>), Box<dyn Error>>
+    ) -> Result<(u16, Vec<u8>, Vec<u8>), InterfaceError>
     {
         self.prepare_download().await?;
         // Lock the interface by providing it to the session

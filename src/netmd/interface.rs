@@ -12,7 +12,6 @@ use log::debug;
 use num_derive::FromPrimitive;
 use rand::RngCore;
 use std::collections::HashMap;
-use std::error::Error;
 use std::time::Duration;
 use thiserror::Error;
 
@@ -22,7 +21,7 @@ use super::utils::{cross_sleep, to_sjis};
 
 /// An action to take on the player
 #[derive(Copy, Clone)]
-enum Action {
+pub enum Action {
     Play = 0x75,
     Pause = 0x7d,
     FastForward = 0x39,
@@ -251,6 +250,9 @@ pub enum EncryptionError {
 
     #[error("supplied {0} length of {1} is invalid")]
     InvalidLength(&'static str, usize),
+
+    #[error("{0}")]
+    InvalidState(&'static str)
 }
 
 /// An error for any action in the interface
@@ -494,14 +496,14 @@ impl NetMDInterface {
             data = self.device.read_reply(None).await?;
 
             let status = NetmdStatus::try_from(data[0])?;
-            debug!("Device status: {:?}", status);
+            debug!("Device status: {status:?}");
 
             match status {
                 NetmdStatus::NotImplemented => {
-                    return Err(InterfaceError::NotImplemented(format!("{:02X?}", data)))
+                    return Err(InterfaceError::NotImplemented(format!("{data:02X?}")))
                 }
                 NetmdStatus::Rejected => {
-                    return Err(InterfaceError::Rejected(format!("{:02X?}", data)))
+                    return Err(InterfaceError::Rejected(format!("{data:02X?}")))
                 }
                 NetmdStatus::Interim if !accept_interim => {
                     let sleep_time = Self::INTERIM_RESPONSE_RETRY_INTERVAL
@@ -518,7 +520,7 @@ impl NetMDInterface {
                     }
                     return Ok(data);
                 }
-                _ => return Err(InterfaceError::Unknown(format!("{:02X?}", data))),
+                _ => return Err(InterfaceError::Unknown(format!("{data:02X?}"))),
             }
         }
 
@@ -526,7 +528,7 @@ impl NetMDInterface {
         unreachable!("The max number of retries is set to 0!")
     }
 
-    async fn playback_control(&mut self, action: Action) -> Result<(), InterfaceError> {
+    pub async fn playback_control(&mut self, action: Action) -> Result<(), InterfaceError> {
         let query = format_query(
             "18c3 ff %b 000000".to_string(),
             vec![QueryValue::Number(action as i64)],
@@ -974,9 +976,6 @@ impl NetMDInterface {
 
         let raw_full_title = self.raw_disc_title(true).await?;
 
-        dbg!(&raw_title);
-        dbg!(&raw_full_title);
-
         let mut full_width_group_list = raw_full_title.split("／／");
 
         for (i, group) in group_list.enumerate() {
@@ -1029,8 +1028,7 @@ impl NetMDInterface {
             for track in track_min - 1..track_max {
                 if track_dict.contains_key(&track) {
                     return Err(InterfaceError::GroupError(format!(
-                        "track {} is in 2 groups",
-                        track
+                        "track {track} is in 2 groups",
                     )));
                 }
                 track_dict.insert(track, (String::from(group_name), i as u16));
@@ -1119,10 +1117,10 @@ impl NetMDInterface {
         Ok(title)
     }
 
-    // Sets the title of the disc
-    //
-    // Caution: This does not respect groups. Use the functions available in
-    // NetMDContext to properly rename a disc.
+    /// Sets the title of the disc
+    ///
+    /// ## Caution: This does not respect groups.
+    /// Use the functions available in NetMDContext to properly rename a disc.
     pub async fn set_disc_title(&mut self, title: &str, wchar: bool) -> Result<(), InterfaceError> {
         let current_title = self.raw_disc_title(wchar).await?;
         if current_title == title {
@@ -1948,7 +1946,7 @@ pub(super) struct MDSession<'a> {
 }
 
 impl<'a> MDSession<'a> {
-    pub async fn init(&mut self) -> Result<(), Box<dyn Error>> {
+    pub async fn init(&mut self) -> Result<(), InterfaceError> {
         self.md.enter_secure_session().await?;
         self.md.leaf_id().await?;
 
@@ -1971,7 +1969,7 @@ impl<'a> MDSession<'a> {
         Ok(())
     }
 
-    pub async fn close(&mut self) -> Result<(), Box<dyn Error>> {
+    pub async fn close(&mut self) -> Result<(), InterfaceError> {
         if self.hex_session_key.is_none() {
             self.md.session_key_forget().await?;
         }
@@ -1985,10 +1983,10 @@ impl<'a> MDSession<'a> {
         mut track: MDTrack,
         progress_callback: F,
         disc_format: Option<DiscFormat>,
-    ) -> Result<(u16, Vec<u8>, Vec<u8>), Box<dyn Error>>
+    ) -> Result<(u16, Vec<u8>, Vec<u8>), InterfaceError>
     {
         if self.hex_session_key.is_none() {
-            return Err("Cannot download a track using a non-init()'ed session!".into());
+            return Err(EncryptionError::InvalidState("Cannot download a track using a non-init()'ed session!").into());
         }
         self.md
             .setup_download(
