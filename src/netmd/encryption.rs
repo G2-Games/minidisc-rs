@@ -9,9 +9,11 @@ use super::interface::DataEncryptorInput;
 type DesEcbEnc = ecb::Decryptor<des::Des>;
 type DesCbcEnc = cbc::Encryptor<des::Des>;
 
+type EncryptionResult = (Vec<u8>, Vec<u8>, Vec<u8>);
+
 pub struct Encryptor {
     #[allow(clippy::type_complexity)]
-    channel: Option<Receiver<(Vec<u8>, Vec<u8>, Vec<u8>)>>,
+    channel: Option<Receiver<EncryptionResult>>,
     state: Option<EncryptorState>,
 }
 
@@ -44,7 +46,7 @@ impl Encryptor {
             if let Err(x) = DesEcbEnc::new(&input.kek.into())
                 .decrypt_padded_mut::<NoPadding>(&mut encrypted_random_key)
             {
-                panic!("Cannot create main key {:?}", x)
+                panic!("Cannot create main key {x:?}")
             };
 
             let default_chunk_size = match input.chunk_size {
@@ -93,7 +95,7 @@ impl Encryptor {
 
         Self {
             channel: Some(rx),
-            state: None
+            state: None,
         }
     }
 
@@ -110,7 +112,7 @@ impl Encryptor {
         if let Err(x) = DesEcbEnc::new(&input.kek.into())
             .decrypt_padded_mut::<NoPadding>(&mut encrypted_random_key)
         {
-            panic!("Cannot create main key {:?}", x)
+            panic!("Cannot create main key {x:?}")
         };
 
         let default_chunk_size = match input.chunk_size {
@@ -141,17 +143,29 @@ impl Encryptor {
                 default_chunk_size,
                 packet_count,
                 closed: false,
-            })
+            }),
         }
     }
 
-    /// Get the next encrypted value
-    pub fn next(&mut self) -> Option<(Vec<u8>, Vec<u8>, Vec<u8>)> {
+    /// Call close to return none from subsequent calls
+    pub fn close(&mut self) {
+        if let Some(state) = self.state.as_mut() {
+            state.closed = true;
+        } else if self.channel.is_some() {
+            eprintln!("IDK what to do here!");
+        }
+    }
+}
+
+impl Iterator for Encryptor {
+    type Item = EncryptionResult;
+
+    fn next(&mut self) -> Option<Self::Item> {
         let output;
 
         if let Some(state) = self.state.as_mut() {
             if state.closed {
-                return None
+                return None;
             }
 
             if state.packet_count > 0 {
@@ -160,9 +174,13 @@ impl Encryptor {
                 state.current_chunk_size = state.default_chunk_size - 24;
             }
 
-            state.current_chunk_size = std::cmp::min(state.current_chunk_size, state.input_data.len() - state.offset);
+            state.current_chunk_size = std::cmp::min(
+                state.current_chunk_size,
+                state.input_data.len() - state.offset,
+            );
 
-            let this_data_chunk = &mut state.input_data[state.offset..state.offset + state.current_chunk_size];
+            let this_data_chunk =
+                &mut state.input_data[state.offset..state.offset + state.current_chunk_size];
             DesCbcEnc::new(&state.random_key.into(), &state.iv.into())
                 .encrypt_padded_mut::<NoPadding>(this_data_chunk, state.current_chunk_size)
                 .unwrap();
@@ -173,7 +191,9 @@ impl Encryptor {
                 this_data_chunk.to_vec(),
             ));
 
-            state.iv.copy_from_slice(&this_data_chunk[this_data_chunk.len() - 8..]);
+            state
+                .iv
+                .copy_from_slice(&this_data_chunk[this_data_chunk.len() - 8..]);
 
             state.packet_count += 1;
             state.offset += state.current_chunk_size;
@@ -184,14 +204,5 @@ impl Encryptor {
         }
 
         output
-    }
-
-    /// Call close to return none from subsequent calls
-    pub fn close(&mut self) {
-        if let Some(state) = self.state.as_mut() {
-            state.closed = true;
-        } else if self.channel.is_some() {
-            eprintln!("IDK what to do here!");
-        }
     }
 }

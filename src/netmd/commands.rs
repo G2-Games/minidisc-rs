@@ -1,21 +1,22 @@
 #![cfg_attr(debug_assertions, allow(dead_code))]
-use nusb::DeviceInfo;
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
+use nusb::DeviceInfo;
 use regex::Regex;
 use std::error::Error;
+use std::thread::sleep;
 use std::time::Duration;
 
 use crate::netmd::interface::DiscFlag;
-use crate::netmd::utils::{create_aea_header, create_wav_header, AeaOptions, RawTime};
+use crate::netmd::utils::{AeaOptions, RawTime, create_aea_header, create_wav_header};
 
 use super::interface::{
     Channels, Direction, DiscFormat, Encoding, InterfaceError, MDSession, MDTrack, NetMDInterface,
     TrackFlag,
 };
 use super::utils::{
-    cross_sleep, half_width_title_length, half_width_to_full_width_range,
-    sanitize_full_width_title, sanitize_half_width_title,
+    half_width_title_length, half_width_to_full_width_range, sanitize_full_width_title,
+    sanitize_half_width_title,
 };
 
 /// The current reported status from the device.
@@ -42,10 +43,7 @@ pub struct Time {
 
 impl From<Time> for Duration {
     fn from(value: Time) -> Self {
-        Duration::from_millis(
-            (value.minute as u64 * 60000)
-            + (value.second as u64 * 1000)
-        )
+        Duration::from_millis((value.minute as u64 * 60000) + (value.second as u64 * 1000))
     }
 }
 
@@ -519,14 +517,14 @@ impl NetMDContext {
                     .replace_all(
                         &old_raw_name,
                         if !new_name.is_empty() {
-                            format!("0;{}//", new_name)
+                            format!("0;{new_name}//")
                         } else {
                             String::new()
                         },
                     )
                     .into()
             } else {
-                new_name_with_groups = format!("0;{}//{}", new_name, old_raw_name);
+                new_name_with_groups = format!("0;{new_name}//{old_raw_name}");
             }
         } else {
             new_name_with_groups = new_name
@@ -581,7 +579,7 @@ impl NetMDContext {
                 .state
                 .unwrap_or(OperatingStatus::NoDisc),
         ) {
-            cross_sleep(Duration::from_millis(200)).await;
+            sleep(Duration::from_millis(200));
         }
 
         let _ = self.interface.session_key_forget().await;
@@ -636,8 +634,7 @@ impl NetMDContext {
         &mut self,
         track: MDTrack,
         progress_callback: F,
-    ) -> Result<(u16, Vec<u8>, Vec<u8>), InterfaceError>
-    {
+    ) -> Result<(u16, Vec<u8>, Vec<u8>), InterfaceError> {
         self.prepare_download().await?;
 
         // Lock the interface by providing it to the session

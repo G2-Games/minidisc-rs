@@ -45,7 +45,7 @@ impl QueryValue {
             }
             _ => Err(ValueError::TypeMismatch {
                 expected: String::from("Vec<u8>"),
-                actual: format!("{:?}", self),
+                actual: format!("{self:?}"),
             }),
         }
     }
@@ -55,7 +55,7 @@ impl QueryValue {
             QueryValue::Array(a) => Ok(a.to_vec()),
             _ => Err(ValueError::TypeMismatch {
                 expected: String::from("Vec<u8>"),
-                actual: format!("{:?}", self),
+                actual: format!("{self:?}"),
             }),
         }
     }
@@ -65,7 +65,7 @@ impl QueryValue {
             QueryValue::Number(a) => Ok(*a),
             _ => Err(ValueError::TypeMismatch {
                 expected: String::from("i64"),
-                actual: format!("{:?}", self),
+                actual: format!("{self:?}"),
             }),
         }
     }
@@ -79,7 +79,7 @@ impl TryInto<i64> for QueryValue {
             QueryValue::Number(a) => Ok(a),
             _ => Err(ValueError::TypeMismatch {
                 expected: String::from("i64"),
-                actual: format!("{:?}", self),
+                actual: format!("{self:?}"),
             }),
         }
     }
@@ -90,7 +90,9 @@ pub enum QueryError {
     #[error("unrecognized format character: `{0}`")]
     UnrecognizedChar(char),
 
-    #[error("format and input mismatch at {index}: expected {expected:#04x}, got {actual:#04x} (format {format_string})")]
+    #[error(
+        "format and input mismatch at {index}: expected {expected:#04x}, got {actual:#04x} (format {format_string})"
+    )]
     InputMismatch {
         index: usize,
         expected: u8,
@@ -105,7 +107,7 @@ pub enum QueryError {
 /// Formats a query using a standard input to send to the player
 pub fn format_query(format: String, args: Vec<QueryValue>) -> Result<Vec<u8>, QueryError> {
     if DEBUG {
-        println!("SENT>>> F: {}", format);
+        println!("SENT>>> F: {format}");
     }
 
     let mut result: Vec<u8> = Vec::new();
@@ -200,11 +202,11 @@ pub fn format_query(format: String, args: Vec<QueryValue>) -> Result<Vec<u8>, Qu
 /// Scans a result using a standard input to recieve from the player
 pub fn scan_query(query_result: Vec<u8>, format: String) -> Result<Vec<QueryValue>, QueryError> {
     if DEBUG {
-        println!("RECV<<< F: {}", format);
+        println!("RECV<<< F: {format}");
     }
 
     if query_result.is_empty() {
-        return Err(QueryError::EmptyData)
+        return Err(QueryError::EmptyData);
     }
 
     let mut result: Vec<QueryValue> = Vec::new();

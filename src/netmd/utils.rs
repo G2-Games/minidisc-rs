@@ -1,5 +1,5 @@
 use crate::netmd::mappings::{ALLOWED_HW_KANA, MAPPINGS_DE, MAPPINGS_HW, MAPPINGS_JP, MAPPINGS_RU};
-use byteorder::{LittleEndian, WriteBytesExt};
+use byteorder::{LE, WriteBytesExt};
 use diacritics;
 use encoding_rs::SHIFT_JIS;
 use regex::Regex;
@@ -13,15 +13,6 @@ use super::{
     interface::DiscFormat,
     mappings::{HW_TO_FW_RANGE_MAP, MULTI_BYTE_CHARS},
 };
-
-/// Sleep for a specified [Duration] on any platform
-pub async fn cross_sleep(duration: Duration) {
-    #[cfg(not(target_family = "wasm"))]
-    std::thread::sleep(duration);
-
-    #[cfg(target_family = "wasm")]
-    gloo::timers::future::TimeoutFuture::new(duration.as_millis() as u32).await;
-}
 
 pub fn bcd_to_int(mut bcd: i32) -> i32 {
     let mut value = 0;
@@ -197,48 +188,24 @@ pub fn create_aea_header(options: AeaOptions) -> Vec<u8> {
 
     let mut header: Vec<u8> = Vec::new();
 
-    header.write_u32::<LittleEndian>(2048).unwrap();
+    header.write_u32::<LE>(2048).unwrap();
     header.write_all(encoded_name).unwrap();
     header
         .write_all(&vec![0; 256 - encoded_name.len()])
         .unwrap();
-    header
-        .write_u32::<LittleEndian>(options.sound_groups)
-        .unwrap();
+    header.write_u32::<LE>(options.sound_groups).unwrap();
     header.write_all(&[options.channels as u8, 0]).unwrap();
 
     // Write the flags
-    header
-        .write_u32::<LittleEndian>(options.flags[0] as u32)
-        .unwrap();
-    header
-        .write_u32::<LittleEndian>(options.flags[1] as u32)
-        .unwrap();
-    header
-        .write_u32::<LittleEndian>(options.flags[2] as u32)
-        .unwrap();
-    header
-        .write_u32::<LittleEndian>(options.flags[3] as u32)
-        .unwrap();
-    header
-        .write_u32::<LittleEndian>(options.flags[4] as u32)
-        .unwrap();
-    header
-        .write_u32::<LittleEndian>(options.flags[5] as u32)
-        .unwrap();
-    header
-        .write_u32::<LittleEndian>(options.flags[6] as u32)
-        .unwrap();
-    header
-        .write_u32::<LittleEndian>(options.flags[7] as u32)
-        .unwrap();
+    options.flags.iter()
+        .take(8)
+        .map(|f| *f as u32)
+        .for_each(|f| header.write_u32::<LE>(f).unwrap());
 
-    header.write_u32::<LittleEndian>(0).unwrap();
+    header.write_u32::<LE>(0).unwrap();
 
-    header.write_u32::<LittleEndian>(options.encrypted).unwrap();
-    header
-        .write_u32::<LittleEndian>(options.group_start)
-        .unwrap();
+    header.write_u32::<LE>(options.encrypted).unwrap();
+    header.write_u32::<LE>(options.group_start).unwrap();
 
     // return the header
     header
@@ -256,31 +223,29 @@ pub fn create_wav_header(format: DiscFormat, bytes: u32) -> Vec<u8> {
     let bytes_per_second = (bytes_per_frame * 44100) / 512;
 
     header.write_all(r"RIFF".as_bytes()).unwrap();
-    header.write_u32::<LittleEndian>(bytes + 60).unwrap();
+    header.write_u32::<LE>(bytes + 60).unwrap();
     header.write_all(r"WAVEfmt".as_bytes()).unwrap();
-    header.write_u32::<LittleEndian>(32).unwrap();
-    header.write_u16::<LittleEndian>(0x270).unwrap(); // ATRAC3
-    header.write_u16::<LittleEndian>(2).unwrap(); // Stereo
-    header.write_u32::<LittleEndian>(44100).unwrap();
-    header.write_u32::<LittleEndian>(bytes_per_second).unwrap();
-    header
-        .write_u16::<LittleEndian>(bytes_per_frame as u16 * 2)
-        .unwrap();
+    header.write_u32::<LE>(32).unwrap();
+    header.write_u16::<LE>(0x270).unwrap(); // ATRAC3
+    header.write_u16::<LE>(2).unwrap(); // Stereo
+    header.write_u32::<LE>(44100).unwrap();
+    header.write_u32::<LE>(bytes_per_second).unwrap();
+    header.write_u16::<LE>(bytes_per_frame as u16 * 2).unwrap();
 
     header.write_all(&[0, 0]).unwrap();
 
-    header.write_u16::<LittleEndian>(14).unwrap();
-    header.write_u16::<LittleEndian>(1).unwrap();
-    header.write_u32::<LittleEndian>(bytes_per_frame).unwrap();
-    header.write_u16::<LittleEndian>(joint_stereo).unwrap();
-    header.write_u16::<LittleEndian>(joint_stereo).unwrap();
+    header.write_u16::<LE>(14).unwrap();
+    header.write_u16::<LE>(1).unwrap();
+    header.write_u32::<LE>(bytes_per_frame).unwrap();
+    header.write_u16::<LE>(joint_stereo).unwrap();
+    header.write_u16::<LE>(joint_stereo).unwrap();
 
-    header.write_u16::<LittleEndian>(1).unwrap();
-    header.write_u16::<LittleEndian>(0).unwrap();
+    header.write_u16::<LE>(1).unwrap();
+    header.write_u16::<LE>(0).unwrap();
 
     header.write_all(r"data".as_bytes()).unwrap();
 
-    header.write_u32::<LittleEndian>(bytes).unwrap();
+    header.write_u32::<LE>(bytes).unwrap();
 
     header
 }

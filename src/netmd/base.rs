@@ -146,7 +146,7 @@ impl NetMD {
         }
 
         if model.name.is_none() {
-            return Err(NetMDError::UnknownDevice(model))
+            return Err(NetMDError::UnknownDevice(model));
         }
 
         let usb_device = usb_descriptor.open().await?;
@@ -207,6 +207,8 @@ impl NetMD {
         Ok((length_bytes, poll_result))
     }
 
+    /// Resets the device on the USB bus, causing it to re-enumerate. This
+    /// directly calls the [`nusb::device::Device::reset`] function.
     pub async fn reset(self) -> Result<(), nusb::Error> {
         self.usb_device.reset().await
     }

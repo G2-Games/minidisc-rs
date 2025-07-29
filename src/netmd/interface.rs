@@ -1,9 +1,9 @@
 #![cfg_attr(debug_assertions, allow(dead_code))]
 use crate::netmd::base;
-use crate::netmd::query_utils::{format_query, scan_query, QueryValue};
+use crate::netmd::query_utils::{QueryValue, format_query, scan_query};
 use crate::netmd::utils::{
-    half_width_to_full_width_range, length_after_encoding_to_sjis, sanitize_full_width_title,
-    sanitize_half_width_title, RawTime,
+    RawTime, half_width_to_full_width_range, length_after_encoding_to_sjis,
+    sanitize_full_width_title, sanitize_half_width_title,
 };
 use cbc::cipher::block_padding::NoPadding;
 use cbc::cipher::{BlockDecryptMut, BlockEncryptMut, KeyInit, KeyIvInit};
@@ -12,12 +12,13 @@ use log::debug;
 use num_derive::FromPrimitive;
 use rand::RngCore;
 use std::collections::HashMap;
+use std::thread::sleep;
 use std::time::Duration;
 use thiserror::Error;
 
 use super::base::NetMD;
 use super::encryption::Encryptor;
-use super::utils::{cross_sleep, to_sjis};
+use super::utils::to_sjis;
 
 /// An action to take on the player
 #[derive(Copy, Clone)]
@@ -133,7 +134,6 @@ pub enum DiscFlag {
     Writable = 0x10,
     WriteProtected = 0x40,
 }
-
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 enum NetMDLevel {
@@ -252,7 +252,7 @@ pub enum EncryptionError {
     InvalidLength(&'static str, usize),
 
     #[error("{0}")]
-    InvalidState(&'static str)
+    InvalidState(&'static str),
 }
 
 /// An error for any action in the interface
@@ -468,11 +468,7 @@ impl NetMDInterface {
         Ok(result)
     }
 
-    async fn send_command(
-        &mut self,
-        query: &[u8],
-        test: bool,
-    ) -> Result<(), InterfaceError> {
+    async fn send_command(&mut self, query: &[u8], test: bool) -> Result<(), InterfaceError> {
         let status_byte = match test {
             true => NetmdStatus::GeneralInquiry,
             false => NetmdStatus::Control,
@@ -500,16 +496,16 @@ impl NetMDInterface {
 
             match status {
                 NetmdStatus::NotImplemented => {
-                    return Err(InterfaceError::NotImplemented(format!("{data:02X?}")))
+                    return Err(InterfaceError::NotImplemented(format!("{data:02X?}")));
                 }
                 NetmdStatus::Rejected => {
-                    return Err(InterfaceError::Rejected(format!("{data:02X?}")))
+                    return Err(InterfaceError::Rejected(format!("{data:02X?}")));
                 }
                 NetmdStatus::Interim if !accept_interim => {
                     let sleep_time = Self::INTERIM_RESPONSE_RETRY_INTERVAL
                         * (u32::pow(2, current_attempt as u32) - 1);
 
-                    cross_sleep(Duration::from_millis(sleep_time as u64)).await;
+                    sleep(Duration::from_millis(sleep_time as u64));
 
                     current_attempt += 1;
                     continue; // Retry!
@@ -653,7 +649,9 @@ impl NetMDInterface {
             .await?;
 
         if operating_status.len() < 2 && !operating_status.is_empty() {
-            return Err(InterfaceError::InvalidStatus(StatusError(operating_status[0] as u16)));
+            return Err(InterfaceError::InvalidStatus(StatusError(
+                operating_status[0] as u16,
+            )));
         }
 
         let operating_status_number =
@@ -687,11 +685,8 @@ impl NetMDInterface {
             "1809 8001 0330 %?%? %?%? %?%? %?%? %?%? %? 1000 00%?0000 %x %?".to_string(),
         )?;
 
-        self.change_descriptor_state(
-            &Descriptor::OperatingStatusBlock,
-            &DescriptorAction::Close
-        )
-        .await?;
+        self.change_descriptor_state(&Descriptor::OperatingStatusBlock, &DescriptorAction::Close)
+            .await?;
 
         Ok(res[0].to_vec().unwrap())
     }
@@ -709,7 +704,8 @@ impl NetMDInterface {
         self.change_descriptor_state(
             &Descriptor::OperatingStatusBlock,
             &DescriptorAction::OpenRead,
-        ).await?;
+        )
+        .await?;
 
         let query = format_query(
             "1809 8001 0430 8802 0030 8805 0030 0003 0030 0002 00 ff00 00000000".to_string(),
@@ -733,10 +729,8 @@ impl NetMDInterface {
             result[4].to_i64().unwrap() as u16,
         ];
 
-        self.change_descriptor_state(
-            &Descriptor::OperatingStatusBlock,
-            &DescriptorAction::Close
-        ).await?;
+        self.change_descriptor_state(&Descriptor::OperatingStatusBlock, &DescriptorAction::Close)
+            .await?;
 
         Ok(final_result)
     }
@@ -999,13 +993,12 @@ impl NetMDInterface {
 
             let full_width_range = half_width_to_full_width_range(&track_range);
 
-            let full_width_group_name = if let Some(n) = full_width_group_list.find(|n| n.starts_with(&full_width_range)) {
-                n.split_once('；')
-                .unwrap()
-                .1
-            } else {
-                ""
-            };
+            let full_width_group_name =
+                if let Some(n) = full_width_group_list.find(|n| n.starts_with(&full_width_range)) {
+                    n.split_once('；').unwrap().1
+                } else {
+                    ""
+                };
 
             let mut track_minmax: Vec<&str> = Vec::new();
             if track_range.find('-').is_some() {
@@ -1485,7 +1478,7 @@ impl NetMDInterface {
             "1800 080046 f003010330 0000 1001 %?%? %?%?".to_string(),
         )?;
 
-        cross_sleep(Duration::from_millis(500)).await;
+        sleep(Duration::from_millis(500));
 
         let format: DiscFormat = match codec & 0x06 {
             0 => DiscFormat::LP4,
@@ -1692,11 +1685,10 @@ impl NetMDInterface {
         discformat: u8,
         frames: u32,
         pkt_size: u32,
-        mut packets: Encryptor,
+        packets: Encryptor,
         hex_session_key: &[u8],
         progress_callback: F,
-    ) -> Result<(u16, Vec<u8>, Vec<u8>), InterfaceError>
-    {
+    ) -> Result<(u16, Vec<u8>, Vec<u8>), InterfaceError> {
         if hex_session_key.len() != 8 {
             return Err(EncryptionError::InvalidLength(
                 "hex session key",
@@ -1705,7 +1697,7 @@ impl NetMDInterface {
         }
 
         // Sharps are slow
-        cross_sleep(Duration::from_millis(200)).await;
+        sleep(Duration::from_millis(200));
 
         let total_bytes: usize = (pkt_size + 24) as usize; //framesizedict[wireformat] * frames + pktcount * 24;
 
@@ -1726,24 +1718,23 @@ impl NetMDInterface {
         self.device.poll().await?;
 
         // Sharps are slow
-        cross_sleep(Duration::from_millis(200)).await;
+        sleep(Duration::from_millis(200));
 
         let mut written_bytes = 0;
-        let mut packet_count = 0;
-
-        while let Some((key, iv, data)) = packets.next() {
+        for (packet_count, (key, iv, data)) in packets.enumerate() {
             let binpack = if packet_count == 0 {
                 let packed_length: Vec<u8> = pkt_size.to_be_bytes().to_vec();
                 [vec![0, 0, 0, 0], packed_length, key, iv, data].concat()
             } else {
                 data
             };
+
             self.device.write_bulk(&binpack).await?;
             written_bytes += binpack.len();
-            packet_count += 1;
-            (progress_callback)(total_bytes, written_bytes);
+
+            progress_callback(total_bytes, written_bytes);
+
             if total_bytes == written_bytes {
-                packets.close();
                 break;
             }
         }
@@ -1972,10 +1963,12 @@ impl<'a> MDSession<'a> {
         mut track: MDTrack,
         progress_callback: F,
         disc_format: Option<DiscFormat>,
-    ) -> Result<(u16, Vec<u8>, Vec<u8>), InterfaceError>
-    {
+    ) -> Result<(u16, Vec<u8>, Vec<u8>), InterfaceError> {
         if self.hex_session_key.is_none() {
-            return Err(EncryptionError::InvalidState("Cannot download a track using a non-init()'ed session!").into());
+            return Err(EncryptionError::InvalidState(
+                "Cannot download a track using a non-init()'ed session!",
+            )
+            .into());
         }
         self.md
             .setup_download(
