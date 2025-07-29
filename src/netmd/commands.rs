@@ -1,5 +1,5 @@
 #![cfg_attr(debug_assertions, allow(dead_code))]
-use cross_usb::DeviceInfo;
+use nusb::DeviceInfo;
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
 use regex::Regex;
@@ -639,7 +639,9 @@ impl NetMDContext {
     ) -> Result<(u16, Vec<u8>, Vec<u8>), InterfaceError>
     {
         self.prepare_download().await?;
+
         // Lock the interface by providing it to the session
+        self.interface.acquire().await.unwrap();
         let mut session = MDSession::new(&mut self.interface);
         session.init().await?;
         let result = session

@@ -1,8 +1,8 @@
 use cbc::cipher::block_padding::NoPadding;
 use cbc::cipher::{BlockDecryptMut, BlockEncryptMut, KeyInit, KeyIvInit};
+use crossbeam::channel::Receiver;
 use rand::RngCore;
 use std::thread;
-use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver};
 
 use super::interface::DataEncryptorInput;
 
@@ -11,7 +11,7 @@ type DesCbcEnc = cbc::Encryptor<des::Des>;
 
 pub struct Encryptor {
     #[allow(clippy::type_complexity)]
-    channel: Option<UnboundedReceiver<(Vec<u8>, Vec<u8>, Vec<u8>)>>,
+    channel: Option<Receiver<(Vec<u8>, Vec<u8>, Vec<u8>)>>,
     state: Option<EncryptorState>,
 }
 
@@ -28,8 +28,9 @@ struct EncryptorState {
 }
 
 impl Encryptor {
+    /// Create new threaded disc writing encryptor
     pub fn new_threaded(input: DataEncryptorInput) -> Self {
-        let (tx, rx) = unbounded_channel::<(Vec<u8>, Vec<u8>, Vec<u8>)>();
+        let (tx, rx) = crossbeam::channel::unbounded::<(Vec<u8>, Vec<u8>, Vec<u8>)>();
 
         thread::spawn(move || {
             let mut iv = [0u8; 8];
@@ -57,7 +58,7 @@ impl Encryptor {
             let mut input_data = input.data.clone();
             if (input_data.len() % input.frame_size) != 0 {
                 let padding_remaining = input.frame_size - (input_data.len() % input.frame_size);
-                input_data.extend(std::iter::repeat(0).take(padding_remaining));
+                input_data.extend(std::iter::repeat_n(0, padding_remaining));
             }
             let input_data_length = input_data.len();
 
@@ -96,6 +97,7 @@ impl Encryptor {
         }
     }
 
+    /// Create new disc writing encryptor
     pub fn new(input: DataEncryptorInput) -> Self {
         let iv = [0u8; 8];
 
@@ -122,7 +124,7 @@ impl Encryptor {
         let mut input_data = input.data.clone();
         if (input_data.len() % input.frame_size) != 0 {
             let padding_remaining = input.frame_size - (input_data.len() % input.frame_size);
-            input_data.extend(std::iter::repeat(0).take(padding_remaining));
+            input_data.extend(std::iter::repeat_n(0, padding_remaining));
         }
 
         let offset: usize = 0;
@@ -144,7 +146,7 @@ impl Encryptor {
     }
 
     /// Get the next encrypted value
-    pub async fn next(&mut self) -> Option<(Vec<u8>, Vec<u8>, Vec<u8>)> {
+    pub fn next(&mut self) -> Option<(Vec<u8>, Vec<u8>, Vec<u8>)> {
         let output;
 
         if let Some(state) = self.state.as_mut() {
@@ -176,7 +178,7 @@ impl Encryptor {
             state.packet_count += 1;
             state.offset += state.current_chunk_size;
         } else if let Some(channel) = self.channel.as_mut() {
-            output = channel.recv().await
+            output = channel.recv().ok();
         } else {
             unreachable!("If you got here, this is bad!");
         }
@@ -188,10 +190,8 @@ impl Encryptor {
     pub fn close(&mut self) {
         if let Some(state) = self.state.as_mut() {
             state.closed = true;
-        } else if let Some(channel) = self.channel.as_mut() {
-            channel.close()
-        } else {
-            unreachable!("If you got here, this is bad!");
+        } else if self.channel.is_some() {
+            eprintln!("IDK what to do here!");
         }
     }
 }

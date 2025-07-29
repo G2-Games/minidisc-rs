@@ -256,7 +256,7 @@ pub enum EncryptionError {
 }
 
 /// An error for any action in the interface
-#[derive(Error, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[derive(Error, Debug)]
 pub enum InterfaceError {
     #[error("could not parse data from a device")]
     QueryError(#[from] crate::netmd::query_utils::QueryError),
@@ -315,19 +315,9 @@ impl NetMDInterface {
     const INTERIM_RESPONSE_RETRY_INTERVAL: u32 = 100;
 
     /// Get a new interface to a NetMD device
-    pub async fn new(device: cross_usb::DeviceInfo) -> Result<Self, InterfaceError> {
+    pub async fn new(device: nusb::DeviceInfo) -> Result<Self, InterfaceError> {
         let device = base::NetMD::new(device).await?;
         Ok(NetMDInterface { device })
-    }
-
-    fn construct_multibyte(&mut self, buffer: &[u8], n: u8, offset: &mut usize) -> u32 {
-        let mut output: u32 = 0;
-        for _ in 0..n as usize {
-            output <<= 8;
-            output |= buffer[*offset] as u32;
-            *offset += 1;
-        }
-        output
     }
 
     // TODO: Finish proper implementation
@@ -337,6 +327,16 @@ impl NetMDInterface {
             &DescriptorAction::OpenRead,
         )
         .await?;
+
+        fn construct_multibyte(buffer: &[u8], n: u8, offset: &mut usize) -> u32 {
+            let mut output: u32 = 0;
+            for _ in 0..n as usize {
+                output <<= 8;
+                output |= buffer[*offset] as u32;
+                *offset += 1;
+            }
+            output
+        }
 
         let query = format_query("1809 00 ff00 0000 0000".to_string(), vec![])?;
 
@@ -359,15 +359,15 @@ impl NetMDInterface {
         let mut buffer_offset: usize = 0;
 
         for _ in 0..amt_of_root_object_lists {
-            root_objects.push(self.construct_multibyte(
+            root_objects.push(construct_multibyte(
                 &buffer,
                 size_of_list_id as u8,
                 &mut buffer_offset,
             ));
         }
 
-        let _subunit_dependent_length = self.construct_multibyte(&buffer, 2, &mut buffer_offset);
-        let _subunit_fields_length = self.construct_multibyte(&buffer, 2, &mut buffer_offset);
+        let _subunit_dependent_length = construct_multibyte(&buffer, 2, &mut buffer_offset);
+        let _subunit_fields_length = construct_multibyte(&buffer, 2, &mut buffer_offset);
         let _attributes = buffer[buffer_offset];
         buffer_offset += 1;
         let _disc_subunit_version = buffer[buffer_offset];
@@ -377,14 +377,14 @@ impl NetMDInterface {
         let amt_supported_media_types = buffer[buffer_offset];
         buffer_offset += 1;
         for _ in 0..amt_supported_media_types {
-            let supported_media_type = self.construct_multibyte(&buffer, 2, &mut buffer_offset);
+            let supported_media_type = construct_multibyte(&buffer, 2, &mut buffer_offset);
 
             let implementation_profile_id = buffer[buffer_offset];
             buffer_offset += 1;
             let media_type_attributes = buffer[buffer_offset];
             buffer_offset += 1;
 
-            let _type_dep_length = self.construct_multibyte(&buffer, 2, &mut buffer_offset);
+            let _type_dep_length = construct_multibyte(&buffer, 2, &mut buffer_offset);
 
             let md_audio_version = buffer[buffer_offset];
             buffer_offset += 1;
@@ -400,7 +400,7 @@ impl NetMDInterface {
             })
         }
 
-        let manufacturer_dep_length = self.construct_multibyte(&buffer, 2, &mut buffer_offset);
+        let manufacturer_dep_length = construct_multibyte(&buffer, 2, &mut buffer_offset);
         let _manufacturer_dep_data =
             &buffer[buffer_offset..buffer_offset + manufacturer_dep_length as usize];
 
@@ -1731,7 +1731,7 @@ impl NetMDInterface {
         let mut written_bytes = 0;
         let mut packet_count = 0;
 
-        while let Some((key, iv, data)) = packets.next().await {
+        while let Some((key, iv, data)) = packets.next() {
             let binpack = if packet_count == 0 {
                 let packed_length: Vec<u8> = pkt_size.to_be_bytes().to_vec();
                 [vec![0, 0, 0, 0], packed_length, key, iv, data].concat()
@@ -1918,19 +1918,8 @@ impl MDTrack {
         [0x14, 0xe3, 0x83, 0x4e, 0xe2, 0xd3, 0xcc, 0xa5]
     }
 
-    #[cfg(not(target_family = "wasm"))]
     pub fn get_encrypting_iterator(&mut self) -> Encryptor {
         Encryptor::new_threaded(DataEncryptorInput {
-            kek: self.get_kek(),
-            frame_size: self.frame_size(),
-            chunk_size: self.chunk_size(),
-            data: std::mem::take(&mut self.data),
-        })
-    }
-
-    #[cfg(target_family = "wasm")]
-    pub fn get_encrypting_iterator(&mut self) -> Encryptor {
-        Encryptor::new(DataEncryptorInput {
             kek: self.get_kek(),
             frame_size: self.frame_size(),
             chunk_size: self.chunk_size(),

@@ -10,7 +10,7 @@ mod query_utils;
 pub mod utils;
 
 #[doc(inline)]
-pub use base::DEVICE_IDS_CROSSUSB;
+pub use base::DEVICE_IDS;
 
 #[doc(inline)]
 pub use commands::NetMDContext;

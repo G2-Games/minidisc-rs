@@ -36,7 +36,7 @@ encoding_rs = "0.8"
 nofmt = "1.0"
 unicode-normalization = "0.1"
 regex = "1.11"
-cross_usb = "0.4"
+nusb = { version = "0.2", features = ["smol"] }
 num-derive = "0.4"
 num-traits = "0.2"
 rand = "0.9"
@@ -44,13 +44,9 @@ getrandom = { version = "0.3", features = ["wasm_js"] }
 des = "0.8"
 cbc = "0.1"
 ecb = "0.1"
-tokio = { version = "1.36", features = ["sync"] }
 g2-unicode-jp = "0.4"
 thiserror = "2.0"
 phf = { version = "0.12", features = ["phf_macros", "macros"] }
 byteorder = "1.5"
 log = "0.4"
-
-[target.'cfg(target_family = "wasm")'.dependencies]
-gloo = { version = "0.11.0", features = ["futures", "worker"] }
-futures = "0.3"
+crossbeam = { version = "0.8.4", features = ["crossbeam-channel"] }
