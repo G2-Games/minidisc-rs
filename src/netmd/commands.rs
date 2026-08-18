@@ -583,15 +583,14 @@ impl NetMD {
     /// ```no_run
     /// # tokio_test::block_on(async {
     /// use minidisc::netmd::DEVICE_IDS_CROSSUSB;
-    /// use minidisc::netmd::NetMDContext;
-    /// use minidisc::netmd::interface::{MDTrack, NetMDInterface};
+    /// use minidisc::netmd::interface::{MDTrack, NetMD};
     ///
     /// // Get the minidisc device from cross_usb
     /// let device = cross_usb::get_device(DEVICE_IDS_CROSSUSB.to_vec()).await.unwrap();
     ///
-    /// // Obtain a NetMDContext and acquire it
-    /// let mut context = NetMDContext::new(device).await.unwrap();
-    /// context.interface_mut().acquire().await.unwrap();
+    /// // Obtain a NetMD and acquire it
+    /// let mut nmd_context = NetMD::new(device).await.unwrap();
+    /// nmd_context.acquire().await.unwrap();
     ///
     /// // Read in an audio file to a vec, for LP2 and LP4 this must be encoded properly
     /// let track_contents: Vec<u8> =
@@ -608,7 +607,7 @@ impl NetMD {
     /// };
     ///
     /// // Download it to the player!
-    /// context.download(
+    /// nmd_context.download(
     ///     track,
     ///     |out_of: usize, done: usize| println!("Done {} / {}", done, out_of)
     /// ).await.expect("Starting download failed");

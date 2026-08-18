@@ -1,8 +1,8 @@
 use cbc::cipher::block_padding::NoPadding;
 use cbc::cipher::{BlockDecryptMut, BlockEncryptMut, KeyInit, KeyIvInit};
 use rand::RngCore;
+use std::sync::mpsc::{Receiver, channel};
 use std::thread;
-use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver};
 
 use super::interface::DataEncryptorInput;
 
@@ -11,8 +11,9 @@ type DesCbcEnc = cbc::Encryptor<des::Des>;
 
 pub struct Encryptor {
     #[allow(clippy::type_complexity)]
-    channel: Option<UnboundedReceiver<(Vec<u8>, Vec<u8>, Vec<u8>)>>,
+    channel: Option<Receiver<(Vec<u8>, Vec<u8>, Vec<u8>)>>,
     state: Option<EncryptorState>,
+    closed: bool,
 }
 
 struct EncryptorState {
@@ -24,12 +25,11 @@ struct EncryptorState {
     current_chunk_size: usize,
     offset: usize,
     packet_count: usize,
-    closed: bool,
 }
 
 impl Encryptor {
     pub fn new_threaded(input: DataEncryptorInput) -> Self {
-        let (tx, rx) = unbounded_channel::<(Vec<u8>, Vec<u8>, Vec<u8>)>();
+        let (tx, rx) = channel::<(Vec<u8>, Vec<u8>, Vec<u8>)>();
 
         thread::spawn(move || {
             let mut iv = [0u8; 8];
@@ -92,7 +92,8 @@ impl Encryptor {
 
         Self {
             channel: Some(rx),
-            state: None
+            state: None,
+            closed: false,
         }
     }
 
@@ -138,8 +139,8 @@ impl Encryptor {
                 offset,
                 default_chunk_size,
                 packet_count,
-                closed: false,
-            })
+            }),
+            closed: false,
         }
     }
 
@@ -148,7 +149,7 @@ impl Encryptor {
         let output;
 
         if let Some(state) = self.state.as_mut() {
-            if state.closed {
+            if self.closed {
                 return None
             }
 
@@ -176,7 +177,7 @@ impl Encryptor {
             state.packet_count += 1;
             state.offset += state.current_chunk_size;
         } else if let Some(channel) = self.channel.as_mut() {
-            output = channel.recv().await
+            output = channel.recv().ok();
         } else {
             unreachable!("If you got here, this is bad!");
         }
@@ -186,12 +187,6 @@ impl Encryptor {
 
     /// Call close to return none from subsequent calls
     pub fn close(&mut self) {
-        if let Some(state) = self.state.as_mut() {
-            state.closed = true;
-        } else if let Some(channel) = self.channel.as_mut() {
-            channel.close()
-        } else {
-            unreachable!("If you got here, this is bad!");
-        }
+        self.closed = true;
     }
 }

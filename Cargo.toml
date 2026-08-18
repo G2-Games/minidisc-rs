@@ -44,7 +44,6 @@ getrandom = { version = "0.3", features = ["wasm_js"] }
 des = "0.8"
 cbc = "0.1"
 ecb = "0.1"
-tokio = { version = "1.36", features = ["sync"] }
 g2-unicode-jp = "0.4"
 thiserror = "2.0"
 phf = { version = "0.12", features = ["phf_macros", "macros"] }

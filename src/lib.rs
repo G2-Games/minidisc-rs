@@ -11,18 +11,18 @@
 //! # tokio_test::block_on(async {
 //! use cross_usb::get_device;
 //! use minidisc::netmd::base::DEVICE_IDS_CROSSUSB;
-//! use minidisc::netmd::NetMDContext;
+//! use minidisc::netmd::NetMD;
 //!
 //! // Get a device using the built-in list of descriptors for minidisc devices
 //! let dev_descriptor = cross_usb::get_device(DEVICE_IDS_CROSSUSB.to_vec()).await
 //!     .expect("Failed to find device");
 //!
 //! // Open a NetMD Context with the device
-//! let mut context = NetMDContext::new(dev_descriptor).await
+//! let mut nmd_context = NetMD::new(dev_descriptor).await
 //!     .expect("Could not create context");
 //!
 //! // Perform operations on it ...
-//! context.list_content().await
+//! nmd_context.list_content().await
 //!     .expect("Could not list disc contents");
 //! # })
 //! ```
