@@ -1,5 +1,4 @@
 #![cfg_attr(debug_assertions, allow(dead_code))]
-use cross_usb::DeviceInfo;
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
 use regex::Regex;
@@ -10,7 +9,7 @@ use crate::netmd::interface::DiscFlag;
 use crate::netmd::utils::{create_aea_header, create_wav_header, AeaOptions, RawTime};
 
 use super::interface::{
-    Channels, Direction, DiscFormat, Encoding, InterfaceError, MDSession, MDTrack, NetMDInterface,
+    Channels, Direction, DiscFormat, Encoding, InterfaceError, MDSession, MDTrack, NetMD,
     TrackFlag,
 };
 use super::utils::{
@@ -320,45 +319,30 @@ impl Disc {
     }
 }
 
-/// Context for interacting with a NetMD device as a wrapper around a [`NetMDInterface`].
-///
-/// This struct wraps a [`NetMDInterface`] and allows for some higher level
-/// functions, but it is still necessary to interact with the [`NetMDInterface`]
-/// when performing many operations.
-pub struct NetMDContext {
-    interface: NetMDInterface,
-}
 
-impl NetMDContext {
-    /// Create a new context to control a NetMD device
-    pub async fn new(device: DeviceInfo) -> Result<Self, InterfaceError> {
-        let interface = NetMDInterface::new(device).await?;
-
-        Ok(Self { interface })
-    }
-
+impl NetMD {
     /// Change to the next track (skip forward)
     pub async fn next_track(&mut self) -> Result<(), InterfaceError> {
-        self.interface.track_change(Direction::Next).await
+        self.track_change(Direction::Next).await
     }
 
     /// Change to the next track (skip back)
     pub async fn previous_track(&mut self) -> Result<(), InterfaceError> {
-        self.interface.track_change(Direction::Previous).await
+        self.track_change(Direction::Previous).await
     }
 
     /// Change to the next track (skip to beginning of track)
     pub async fn restart_track(&mut self) -> Result<(), InterfaceError> {
-        self.interface.track_change(Direction::Restart).await
+        self.track_change(Direction::Restart).await
     }
 
     /// Get the current status of the device
     pub async fn device_status(&mut self) -> Result<DeviceStatus, InterfaceError> {
-        let status = self.interface.status().await?;
-        let playback_status = self.interface.playback_status2().await?;
+        let status = self.status().await?;
+        let playback_status = self.playback_status2().await?;
         let b1: u16 = playback_status[4] as u16;
         let b2: u16 = playback_status[5] as u16;
-        let position = self.interface.position().await?;
+        let position = self.position().await?;
         let operating_status = b1 << 8 | b2;
 
         let track = position[0] as u8;
@@ -385,11 +369,11 @@ impl NetMDContext {
 
     /// Get a representation of the current disc inserted in the device.
     pub async fn list_content(&mut self) -> Result<Disc, InterfaceError> {
-        let flags = self.interface.disc_flags().await?;
-        let title = self.interface.disc_title(false).await?;
-        let full_width_title = self.interface.disc_title(true).await?;
-        let disc_capacity: [RawTime; 3] = self.interface.disc_capacity().await?;
-        let track_count = self.interface.track_count().await?;
+        let flags = self.disc_flags().await?;
+        let title = self.disc_title(false).await?;
+        let full_width_title = self.disc_title(true).await?;
+        let disc_capacity: [RawTime; 3] = self.disc_capacity().await?;
+        let track_count = self.track_count().await?;
 
         let mut frames_used = disc_capacity[0].as_frames();
         let mut frames_total = disc_capacity[1].as_frames();
@@ -402,17 +386,17 @@ impl NetMDContext {
             frames_left /= 2;
         }
 
-        let track_group_list = self.interface.track_group_list().await?;
+        let track_group_list = self.track_group_list().await?;
 
         let mut groups = vec![];
         for (index, group) in track_group_list.iter().enumerate() {
             let mut tracks = vec![];
             for track in &group.2 {
-                let (encoding, channel) = self.interface.track_encoding(*track).await.unwrap();
-                let duration = self.interface.track_length(*track).await?;
-                let flags = self.interface.track_flags(*track).await?;
-                let title = self.interface.track_title(*track, false).await?;
-                let full_width_title = self.interface.track_title(*track, true).await?;
+                let (encoding, channel) = self.track_encoding(*track).await.unwrap();
+                let duration = self.track_length(*track).await?;
+                let flags = self.track_flags(*track).await?;
+                let title = self.track_title(*track, false).await?;
+                let full_width_title = self.track_title(*track, true).await?;
 
                 tracks.push(Track {
                     index: *track,
@@ -451,8 +435,8 @@ impl NetMDContext {
     pub async fn rewrite_disc_groups(&mut self, disc: Disc) -> Result<(), Box<dyn Error>> {
         let (new_raw_title, new_raw_full_width_title) = disc.compile_disc_titles();
 
-        self.interface.set_disc_title(&new_raw_title, false).await?;
-        self.interface
+        self.set_disc_title(&new_raw_title, false).await?;
+        self
             .set_disc_title(&new_raw_full_width_title, false)
             .await?;
 
@@ -468,10 +452,10 @@ impl NetMDContext {
         let new_name = sanitize_half_width_title(new_name);
         let new_fw_name = new_fw_name.map(sanitize_full_width_title);
 
-        let old_name = self.interface.disc_title(false).await?;
-        let old_fw_name = self.interface.disc_title(true).await?;
-        let old_raw_name = self.interface.raw_disc_title(false).await?;
-        let old_raw_fw_name = self.interface.raw_disc_title(true).await?;
+        let old_name = self.disc_title(false).await?;
+        let old_fw_name = self.disc_title(true).await?;
+        let old_raw_name = self.raw_disc_title(false).await?;
+        let old_raw_fw_name = self.raw_disc_title(true).await?;
 
         let has_groups = old_raw_name.contains("//");
         let has_fw_groups = old_raw_fw_name.contains("／／");
@@ -502,7 +486,7 @@ impl NetMDContext {
                 new_fw_name_with_groups = new_fw_name.unwrap();
             }
 
-            self.interface
+            self
                 .set_disc_title(&new_fw_name_with_groups, true)
                 .await?;
         }
@@ -532,7 +516,7 @@ impl NetMDContext {
             new_name_with_groups = new_name
         }
 
-        self.interface
+        self
             .set_disc_title(&new_name_with_groups, false)
             .await?;
 
@@ -547,25 +531,23 @@ impl NetMDContext {
     ) -> Result<(DiscFormat, Vec<u8>), InterfaceError> {
         let mut output_vec = Vec::new();
         let (format, _frames, result) = self
-            .interface
             .save_track_to_array(track, progress_callback)
             .await?;
 
-        let header;
-        match format {
+        let header = match format {
             DiscFormat::SPMono | DiscFormat::SPStereo => {
                 let aea_options = AeaOptions {
-                    name: &self.interface.track_title(track, false).await?,
+                    name: &self.track_title(track, false).await?,
                     channels: if format == DiscFormat::SPStereo { 2 } else { 1 },
                     sound_groups: f32::floor(result.len() as f32 / 212.0) as u32,
                     ..Default::default()
                 };
-                header = create_aea_header(aea_options);
+                create_aea_header(aea_options)
             }
             DiscFormat::LP2 | DiscFormat::LP4 => {
-                header = create_wav_header(format, result.len() as u32);
+                create_wav_header(format, result.len() as u32)
             }
-        }
+        };
 
         output_vec.extend_from_slice(&header);
         output_vec.extend_from_slice(&result);
@@ -584,11 +566,11 @@ impl NetMDContext {
             cross_sleep(Duration::from_millis(200)).await;
         }
 
-        let _ = self.interface.session_key_forget().await;
-        let _ = self.interface.leave_secure_session().await;
+        let _ = self.session_key_forget().await;
+        let _ = self.leave_secure_session().await;
 
-        self.interface.acquire().await?;
-        let _ = self.interface.disable_new_track_protection(1).await;
+        self.acquire().await?;
+        let _ = self.disable_new_track_protection(1).await;
 
         Ok(())
     }
@@ -640,35 +622,15 @@ impl NetMDContext {
     {
         self.prepare_download().await?;
         // Lock the interface by providing it to the session
-        let mut session = MDSession::new(&mut self.interface);
+        let mut session = MDSession::new(self);
         session.init().await?;
         let result = session
             .download_track(track, progress_callback, None)
             .await?;
         session.close().await?;
-        self.interface.release().await?;
+        self.release().await?;
 
         Ok(result)
-    }
-
-    /// Get a reference to the underlying interface.
-    ///
-    /// [`NetMDContext::interface_mut()`] is almost certainly more useful
-    /// in most cases.
-    pub fn interface(&self) -> &NetMDInterface {
-        &self.interface
-    }
-
-    /// Get a mutable reference to the underlying interface.
-    pub fn interface_mut(&mut self) -> &mut NetMDInterface {
-        &mut self.interface
-    }
-}
-
-impl From<NetMDInterface> for NetMDContext {
-    /// Create a context from an already opened interface.
-    fn from(value: NetMDInterface) -> Self {
-        Self { interface: value }
     }
 }
 

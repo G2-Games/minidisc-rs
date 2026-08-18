@@ -13,10 +13,7 @@ pub mod utils;
 pub use base::DEVICE_IDS_CROSSUSB;
 
 #[doc(inline)]
-pub use commands::NetMDContext;
+pub use interface::NetMD;
 
 #[doc(inline)]
-pub use interface::NetMDInterface;
-
-#[doc(inline)]
-pub use base::NetMD;
+pub use base::NetMDBase;

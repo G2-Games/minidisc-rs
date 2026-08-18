@@ -15,7 +15,7 @@ use std::collections::HashMap;
 use std::time::Duration;
 use thiserror::Error;
 
-use super::base::NetMD;
+use super::base::NetMDBase;
 use super::encryption::Encryptor;
 use super::utils::{cross_sleep, to_sjis};
 
@@ -302,12 +302,12 @@ pub enum InterfaceError {
 }
 
 /// An interface for interacting with a NetMD device
-pub struct NetMDInterface {
-    pub device: NetMD,
+pub struct NetMD {
+    pub device: NetMDBase,
 }
 
 #[allow(dead_code)]
-impl NetMDInterface {
+impl NetMD {
     /// The maximum number of times to retry after an interim response
     const MAX_INTERIM_READ_ATTEMPTS: u8 = 4;
 
@@ -316,8 +316,8 @@ impl NetMDInterface {
 
     /// Get a new interface to a NetMD device
     pub async fn new(device: cross_usb::DeviceInfo) -> Result<Self, InterfaceError> {
-        let device = base::NetMD::new(device).await?;
-        Ok(NetMDInterface { device })
+        let device = base::NetMDBase::new(device).await?;
+        Ok(NetMD { device })
     }
 
     fn construct_multibyte(&mut self, buffer: &[u8], n: u8, offset: &mut usize) -> u32 {
@@ -1551,7 +1551,7 @@ impl NetMDInterface {
         let databytes = 16 + 16 * chainlen + 24;
 
         if !(1..=63).contains(&depth) {
-            return Err(EncryptionError::InvalidDepth(depth))?;
+            Err(EncryptionError::InvalidDepth(depth))?
         }
 
         let keychains = keychain.concat();
@@ -1584,10 +1584,10 @@ impl NetMDInterface {
         hostnonce: Vec<u8>,
     ) -> Result<Vec<u8>, InterfaceError> {
         if hostnonce.len() != 8 {
-            return Err(EncryptionError::InvalidLength(
+            Err(EncryptionError::InvalidLength(
                 "host nonce",
                 hostnonce.len(),
-            ))?;
+            ))?
         }
 
         let query = format_query(
@@ -1618,22 +1618,22 @@ impl NetMDInterface {
         hex_session_key: &[u8],
     ) -> Result<(), InterfaceError> {
         if contentid.len() != 20 {
-            return Err(EncryptionError::InvalidLength(
+            Err(EncryptionError::InvalidLength(
                 "content ID",
                 contentid.len(),
-            ))?;
+            ))?
         }
         if keyenckey.len() != 8 {
-            return Err(EncryptionError::InvalidLength(
+            Err(EncryptionError::InvalidLength(
                 "key encryption",
                 keyenckey.len(),
-            ))?;
+            ))?
         }
         if hex_session_key.len() != 8 {
-            return Err(EncryptionError::InvalidLength(
+            Err(EncryptionError::InvalidLength(
                 "session key",
                 hex_session_key.len(),
-            ))?;
+            ))?
         }
 
         let mut message = [vec![1, 1, 1, 1], contentid.to_vec(), keyenckey.to_vec()].concat();
@@ -1659,10 +1659,10 @@ impl NetMDInterface {
         hex_session_key: &[u8],
     ) -> Result<(), InterfaceError> {
         if hex_session_key.len() != 8 {
-            return Err(EncryptionError::InvalidLength(
+            Err(EncryptionError::InvalidLength(
                 "hex session key",
                 hex_session_key.len(),
-            ))?;
+            ))?
         }
 
         let mut message = [0u8; 8];
@@ -1698,10 +1698,10 @@ impl NetMDInterface {
     ) -> Result<(u16, Vec<u8>, Vec<u8>), InterfaceError>
     {
         if hex_session_key.len() != 8 {
-            return Err(EncryptionError::InvalidLength(
+            Err(EncryptionError::InvalidLength(
                 "hex session key",
                 hex_session_key.len(),
-            ))?;
+            ))?
         }
 
         // Sharps are slow
@@ -1901,7 +1901,7 @@ impl MDTrack {
     pub fn total_size(&self) -> usize {
         let frame_size = self.frame_size();
         let mut len = self.data.len();
-        if len % frame_size != 0 {
+        if !len.is_multiple_of(frame_size) {
             len = len + (frame_size - (len % frame_size));
         }
         len
@@ -1940,7 +1940,7 @@ impl MDTrack {
 }
 
 pub(super) struct MDSession<'a> {
-    pub md: &'a mut NetMDInterface,
+    pub md: &'a mut NetMD,
     pub ekb_object: EKBOpenSource,
     pub hex_session_key: Option<Vec<u8>>,
 }
@@ -2026,7 +2026,7 @@ impl<'a> MDSession<'a> {
         Ok((track_index, uuid, ccid))
     }
 
-    pub fn new(md: &'a mut NetMDInterface) -> Self {
+    pub fn new(md: &'a mut NetMD) -> Self {
         MDSession {
             md,
             ekb_object: EKBOpenSource,

@@ -55,9 +55,9 @@ impl Encryptor {
             let mut current_chunk_size;
 
             let mut input_data = input.data.clone();
-            if (input_data.len() % input.frame_size) != 0 {
+            if input_data.len().is_multiple_of(input.frame_size) {
                 let padding_remaining = input.frame_size - (input_data.len() % input.frame_size);
-                input_data.extend(std::iter::repeat(0).take(padding_remaining));
+                input_data.extend(std::iter::repeat_n(0, padding_remaining));
             }
             let input_data_length = input_data.len();
 
@@ -120,9 +120,9 @@ impl Encryptor {
         let current_chunk_size = 0;
 
         let mut input_data = input.data.clone();
-        if (input_data.len() % input.frame_size) != 0 {
+        if !input_data.len().is_multiple_of(input.frame_size) {
             let padding_remaining = input.frame_size - (input_data.len() % input.frame_size);
-            input_data.extend(std::iter::repeat(0).take(padding_remaining));
+            input_data.extend(std::iter::repeat_n(0, padding_remaining));
         }
 
         let offset: usize = 0;

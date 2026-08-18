@@ -92,7 +92,7 @@ fn check(string: String) -> Option<String> {
 pub fn half_width_title_length(title: &str) -> usize {
     let multibyte_len = title
         .chars()
-        .map(|c| (*MULTI_BYTE_CHARS.get(&c).unwrap_or(&0) as usize))
+        .map(|c| *MULTI_BYTE_CHARS.get(&c).unwrap_or(&0) as usize)
         .reduce(|a, b| a + b)
         .unwrap_or_default();
 

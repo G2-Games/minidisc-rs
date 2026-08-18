@@ -123,12 +123,12 @@ pub enum NetMDError {
 ///
 /// For simple communication with a NetMD device, you most likely want the
 /// higher level [`super::NetMDInterface`] or [`super::NetMDContext`] interfaces
-pub struct NetMD {
+pub struct NetMDBase {
     usb_interface: Interface,
     model: DeviceId,
 }
 
-impl NetMD {
+impl NetMDBase {
     const READ_REPLY_RETRY_INTERVAL: u32 = 10;
 
     /// Creates a new interface to a NetMD device
@@ -148,9 +148,8 @@ impl NetMD {
             }
         }
 
-        match model.name {
-            None => return Err(NetMDError::UnknownDevice(model)),
-            Some(_) => (),
+        if model.name.is_none() {
+            return Err(NetMDError::UnknownDevice(model))
         }
 
         let usb_device = usb_descriptor.open().await?;
