@@ -1,6 +1,6 @@
 use cbc::cipher::block_padding::NoPadding;
 use cbc::cipher::{BlockDecryptMut, BlockEncryptMut, KeyInit, KeyIvInit};
-use rand::RngCore;
+use rand::Rng as _;
 use std::sync::mpsc::{Receiver, channel};
 use std::thread;
 

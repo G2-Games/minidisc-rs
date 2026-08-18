@@ -10,7 +10,7 @@ use cbc::cipher::{BlockDecryptMut, BlockEncryptMut, KeyInit, KeyIvInit};
 use encoding_rs::SHIFT_JIS;
 use log::debug;
 use num_derive::FromPrimitive;
-use rand::RngCore;
+use rand::Rng as _;
 use std::collections::HashMap;
 use std::time::Duration;
 use thiserror::Error;
