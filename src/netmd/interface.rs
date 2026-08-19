@@ -256,7 +256,7 @@ pub enum EncryptionError {
 }
 
 /// An error for any action in the interface
-#[derive(Error, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[derive(Error, Debug)]
 pub enum InterfaceError {
     #[error("could not parse data from a device")]
     QueryError(#[from] crate::netmd::query_utils::QueryError),
@@ -315,7 +315,7 @@ impl NetMD {
     const INTERIM_RESPONSE_RETRY_INTERVAL: u32 = 100;
 
     /// Get a new interface to a NetMD device
-    pub async fn new(device: cross_usb::DeviceInfo) -> Result<Self, InterfaceError> {
+    pub async fn new(device: nusb::DeviceInfo) -> Result<Self, InterfaceError> {
         let device = base::NetMDBase::new(device).await?;
         Ok(NetMD { device })
     }
@@ -1454,10 +1454,9 @@ impl NetMD {
     /// Gets the bytes of a track
     ///
     /// This can only be executed on an MZ-RH1 / M200
-    pub async fn save_track_to_array<F: Fn(usize, usize)>(
+    pub async fn save_track_to_array(
         &mut self,
         track: u16,
-        progress_callback: Option<F>,
     ) -> Result<(DiscFormat, u16, Vec<u8>), InterfaceError> {
         let query = format_query(
             "1800 080046 f003010330 ff00 1001 %w".to_string(),
@@ -1477,7 +1476,7 @@ impl NetMD {
 
         let result = self
             .device
-            .read_bulk(length, 0x10000, progress_callback)
+            .read_bulk(length, 0x10000)
             .await?;
 
         scan_query(

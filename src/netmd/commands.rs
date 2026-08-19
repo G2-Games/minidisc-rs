@@ -524,14 +524,13 @@ impl NetMD {
     }
 
     /// Get a track from the device. This only works with MZ-RH1 devices.
-    pub async fn upload<F: Fn(usize, usize)>(
+    pub async fn upload(
         &mut self,
         track: u16,
-        progress_callback: Option<F>,
     ) -> Result<(DiscFormat, Vec<u8>), InterfaceError> {
         let mut output_vec = Vec::new();
         let (format, _frames, result) = self
-            .save_track_to_array(track, progress_callback)
+            .save_track_to_array(track)
             .await?;
 
         let header = match format {
